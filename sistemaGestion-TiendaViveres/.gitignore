@@ -1,0 +1,16 @@
+# Artefactos compilados
+out/
+*.class
+
+# Archivos de datos generados en tiempo de ejecución
+*.dat
+
+# IntelliJ IDEA
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db

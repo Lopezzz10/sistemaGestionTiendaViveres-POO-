@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="Sistema-Gestion-Tienda-Viveres:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/Sistema_Gestion_Tienda_Viveres_jar</output-path>
+    <root id="archive" name="Sistema-Gestion-Tienda-Viveres.jar">
+      <element id="module-output" name="Sistema-Gestion-Tienda-Viveres" />
+    </root>
+  </artifact>
+</component>
