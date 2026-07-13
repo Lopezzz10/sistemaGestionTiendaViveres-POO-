@@ -894,8 +894,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
                 return;
             }
 
-            mostrarTabla(control.getTablaFacturasPorCriterios(this, criterios),
-                    "factura(s) - Busqueda Avanzada");
+            mostrarFacturasFiltradas(control.getFachada().buscarFacturas(criterios));
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Ingrese valores numericos validos en el rango de total.",
                     "Error", JOptionPane.ERROR_MESSAGE);
@@ -1021,6 +1020,23 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         scrollPane.setViewportView(new PanelTabla(null, t));
         int n = t.getFilas() != null ? t.getFilas().length : 0;
         lblEstado.setText(n + " " + sufijo + " encontrado(s). " +
+                new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()));
+    }
+
+    /**
+     * Muestra el resultado de una busqueda avanzada de facturas usando la
+     * misma vista maestro-detalle (lista + factura) que "Listar Facturas",
+     * en lugar de la tabla plana generica.
+     */
+    private void mostrarFacturasFiltradas(java.util.ArrayList<edu.uce.programacion2.tienda.negocio.Factura> lista) {
+        if (lista == null || lista.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "No se encontraron facturas con esos criterios.",
+                    "Aviso", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        scrollPane.setViewportView(new PanelListaFacturas(lista));
+        lblEstado.setText(lista.size() + " factura(s) - Busqueda Avanzada. " +
                 new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date()));
     }
 
