@@ -2,6 +2,9 @@ package edu.uce.programacion2.tienda.persistencia;
 
 import edu.uce.programacion2.tienda.negocio.Producto;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.FiltrosProducto;
+
 import java.util.ArrayList;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -74,8 +77,8 @@ public class Productos {
      * decida qué campos filtrar), este único método sirve para CUALQUIER
      * combinación de criterios — desde "un solo campo" hasta consultas con
      * varios parámetros a la vez, con solo cambiar el predicado que se le
-     * pasa (ver {@link edu.uce.programacion2.tienda.negocio.FiltrosProducto}
-     * y {@link edu.uce.programacion2.tienda.negocio.CriteriosProducto}).
+     * pasa (ver {@link FiltrosProducto}
+     * y {@link CriteriosProducto}).
      *
      * @param criterio función que decide si un producto pertenece al resultado
      * @return productos que cumplen el criterio (lista nueva, no afecta la original)

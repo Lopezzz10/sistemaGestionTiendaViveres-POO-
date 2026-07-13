@@ -2,10 +2,10 @@ package edu.uce.programacion2.tienda.interfaz;
 
 import edu.uce.programacion2.tienda.control.Control;
 import edu.uce.programacion2.tienda.control.Tabla;
-import edu.uce.programacion2.tienda.negocio.CriteriosCompra;
-import edu.uce.programacion2.tienda.negocio.CriteriosFactura;
-import edu.uce.programacion2.tienda.negocio.CriteriosProducto;
-import edu.uce.programacion2.tienda.negocio.CriteriosVenta;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 import edu.uce.programacion2.tienda.objetosServicio.Permiso;
 import edu.uce.programacion2.tienda.negocio.Usuario;
 

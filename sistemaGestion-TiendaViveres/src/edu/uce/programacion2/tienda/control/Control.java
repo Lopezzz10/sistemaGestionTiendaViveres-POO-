@@ -6,8 +6,7 @@ import edu.uce.programacion2.tienda.fachadas.FachadaTienda;
 import edu.uce.programacion2.tienda.interfaces.IFachadaTienda;
 import edu.uce.programacion2.tienda.negocio.*;
 import edu.uce.programacion2.tienda.interfaz.*;
-import edu.uce.programacion2.tienda.objetosServicio.Fecha;
-import edu.uce.programacion2.tienda.objetosServicio.Periodo;
+import edu.uce.programacion2.tienda.objetosServicio.*;
 
 import javax.swing.*;
 import java.util.ArrayList;

@@ -2,6 +2,8 @@ package edu.uce.programacion2.tienda.persistencia;
 
 import edu.uce.programacion2.tienda.negocio.Factura;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
+
 import java.util.ArrayList;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -80,7 +82,7 @@ public class Facturas {
      * (programación funcional): recibe un {@link Predicate}&lt;{@link Factura}&gt;
      * y retorna las facturas que lo cumplen. Es el mecanismo base sobre el
      * que se construyen las consultas combinables de {@link FiltrosVenta}
-     * y {@link edu.uce.programacion2.tienda.negocio.CriteriosVenta}.
+     * y {@link CriteriosVenta}.
      *
      * @param criterio función que decide si una factura pertenece al resultado
      * @return facturas que cumplen el criterio (lista nueva, no afecta la original)

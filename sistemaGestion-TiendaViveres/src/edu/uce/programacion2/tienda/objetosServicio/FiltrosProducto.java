@@ -1,4 +1,6 @@
-package edu.uce.programacion2.tienda.negocio;
+package edu.uce.programacion2.tienda.objetosServicio;
+
+import edu.uce.programacion2.tienda.negocio.Producto;
 
 import java.util.function.Predicate;
 

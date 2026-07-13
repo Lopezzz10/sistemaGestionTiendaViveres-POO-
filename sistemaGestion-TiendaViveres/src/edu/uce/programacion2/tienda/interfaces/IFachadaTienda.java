@@ -5,6 +5,10 @@ import edu.uce.programacion2.tienda.excepciones.FachadaException;
 import edu.uce.programacion2.tienda.excepciones.ProductoNoEncontradoException;
 import edu.uce.programacion2.tienda.excepciones.StockInsuficienteException;
 import edu.uce.programacion2.tienda.negocio.*;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 
 import java.util.ArrayList;
 

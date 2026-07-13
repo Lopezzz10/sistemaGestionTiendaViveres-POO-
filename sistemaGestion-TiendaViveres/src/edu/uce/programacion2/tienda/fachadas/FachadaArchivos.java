@@ -7,7 +7,7 @@ import edu.uce.programacion2.tienda.excepciones.StockInsuficienteException;
 import edu.uce.programacion2.tienda.interfaces.IFachadaTienda;
 import edu.uce.programacion2.tienda.interfaces.ReglaDescuento;
 import edu.uce.programacion2.tienda.negocio.*;
-import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
+import edu.uce.programacion2.tienda.objetosServicio.*;
 import edu.uce.programacion2.tienda.persistencia.*;
 
 import java.util.ArrayList;
