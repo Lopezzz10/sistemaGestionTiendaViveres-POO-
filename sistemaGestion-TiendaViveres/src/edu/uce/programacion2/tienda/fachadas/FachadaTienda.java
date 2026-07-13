@@ -6,7 +6,10 @@ import edu.uce.programacion2.tienda.interfaces.ReglaDescuento;
 import edu.uce.programacion2.tienda.negocio.*;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosInventario;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProveedor;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosUsuario;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 import edu.uce.programacion2.tienda.persistencia.*;
 import java.util.ArrayList;
@@ -282,6 +285,26 @@ public class FachadaTienda implements IFachadaTienda {
 
     public ArrayList<Inventario> listarInventariosConAlerta() { return inventarios.listarConAlerta(); }
 
+    /**
+     * Búsqueda avanzada de inventarios: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de inventarios con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    public ArrayList<Inventario> buscarInventariosPor(Predicate<Inventario> condicion) {
+        return inventarios.listar().stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de inventarios: recibe varios parámetros opcionales
+     * a la vez (producto, categoría, rango de stock, rango de fechas, solo
+     * con alerta, solo activos) empaquetados en {@link CriteriosInventario}.
+     */
+    public ArrayList<Inventario> buscarInventarios(CriteriosInventario criterios) {
+        return buscarInventariosPor(criterios.aPredicate());
+    }
+
     // ── Ventas ────────────────────────────────────────────────────────────
 
     public void registrarVenta(Venta v) throws FachadaException {
@@ -397,6 +420,26 @@ public class FachadaTienda implements IFachadaTienda {
         return proveedores.listarActivos();
     }
 
+    /**
+     * Búsqueda avanzada de proveedores: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de proveedores con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    public ArrayList<Proveedor> buscarProveedoresPor(Predicate<Proveedor> condicion) {
+        return proveedores.listar().stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de proveedores: recibe varios parámetros opcionales
+     * a la vez (nombre, RUC, teléfono, email, dirección, solo activos)
+     * empaquetados en {@link CriteriosProveedor}.
+     */
+    public ArrayList<Proveedor> buscarProveedores(CriteriosProveedor criterios) {
+        return buscarProveedoresPor(criterios.aPredicate());
+    }
+
     // ── Compras ───────────────────────────────────────────────────────────
 
     public void registrarCompra(Compra c) throws FachadaException {
@@ -482,6 +525,28 @@ public class FachadaTienda implements IFachadaTienda {
     }
 
     public ArrayList<Usuario> listarUsuarios() { return usuarios.listar(); }
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de usuarios con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    @Override
+    public ArrayList<Usuario> buscarUsuariosPor(Predicate<Usuario> condicion) {
+        return usuarios.listar().stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe varios parámetros opcionales
+     * a la vez (nombre/email parcial, rol, solo activos) empaquetados en
+     * {@link CriteriosUsuario}.
+     */
+    @Override
+    public ArrayList<Usuario> buscarUsuarios(CriteriosUsuario criterios) {
+        return buscarUsuariosPor(criterios.aPredicate());
+    }
 
     public void actualizarUsuario(Usuario u) throws FachadaException {
         try { usuarios.actualizar(u); }

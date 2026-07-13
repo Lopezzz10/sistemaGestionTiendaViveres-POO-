@@ -4,7 +4,10 @@ import edu.uce.programacion2.tienda.control.Control;
 import edu.uce.programacion2.tienda.control.Tabla;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosInventario;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProveedor;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosUsuario;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 import edu.uce.programacion2.tienda.objetosServicio.Permiso;
 import edu.uce.programacion2.tienda.negocio.Usuario;
@@ -87,6 +90,8 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
 
     private JMenuItem miProductosPorRangoPrecio;
     private JMenuItem miProductosBusquedaAvanzada;
+    private JMenuItem miProveedoresBusquedaAvanzada;
+    private JMenuItem miInventariosBusquedaAvanzada;
     private JMenuItem miVerCatalogo;
     private JMenuItem miListarCategorias;
     private JMenuItem miResumenPorCategoria;
@@ -99,6 +104,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     private JMenuItem miComprasBusquedaAvanzada;
     private JMenuItem miListarFacturas;
     private JMenuItem miFacturasBusquedaAvanzada;
+    private JMenuItem miUsuariosBusquedaAvanzada;
     private JMenuItem miListarUsuarios;
     private JMenuItem miListarRoles;
 
@@ -388,14 +394,20 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         menuConsultasFiltro.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
         miProductosBusquedaAvanzada = item("Productos - Busqueda Avanzada");
+        miProveedoresBusquedaAvanzada = item("Proveedores - Busqueda Avanzada");
+        miInventariosBusquedaAvanzada = item("Inventarios - Busqueda Avanzada");
         miVentasBusquedaAvanzada = item("Ventas - Busqueda Avanzada");
         miComprasBusquedaAvanzada = item("Compras - Busqueda Avanzada");
         miFacturasBusquedaAvanzada = item("Facturas - Busqueda Avanzada");
+        miUsuariosBusquedaAvanzada = item("Usuarios - Busqueda Avanzada");
 
         menuConsultasFiltro.add(miProductosBusquedaAvanzada);
+        menuConsultasFiltro.add(miProveedoresBusquedaAvanzada);
+        menuConsultasFiltro.add(miInventariosBusquedaAvanzada);
         menuConsultasFiltro.add(miVentasBusquedaAvanzada);
         menuConsultasFiltro.add(miComprasBusquedaAvanzada);
         menuConsultasFiltro.add(miFacturasBusquedaAvanzada);
+        menuConsultasFiltro.add(miUsuariosBusquedaAvanzada);
 
         // ── Menú Configuración ────────────────────────────────────────────────
         menuConfiguracion = new JMenu("Configurar IVA");
@@ -603,9 +615,12 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
 
             // Consultas con Filtro
         else if (src == miProductosBusquedaAvanzada) accionProductosBusquedaAvanzada();
+        else if (src == miProveedoresBusquedaAvanzada) accionProveedoresBusquedaAvanzada();
+        else if (src == miInventariosBusquedaAvanzada) accionInventariosBusquedaAvanzada();
         else if (src == miVentasBusquedaAvanzada) accionVentasBusquedaAvanzada();
         else if (src == miComprasBusquedaAvanzada) accionComprasBusquedaAvanzada();
         else if (src == miFacturasBusquedaAvanzada) accionFacturasBusquedaAvanzada();
+        else if (src == miUsuariosBusquedaAvanzada) accionUsuariosBusquedaAvanzada();
 
         else if (src == miSalir) {
             int ok = JOptionPane.showConfirmDialog(this,
@@ -721,6 +736,138 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
                     "producto(s) - Busqueda Avanzada");
         } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Ingrese valores numericos validos en el rango de precio.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void accionUsuariosBusquedaAvanzada() {
+        JTextField txtTexto = new JTextField(20);
+        txtTexto.setToolTipText("Nombre o email (busqueda parcial)");
+
+        JComboBox<String> cmbRol = new JComboBox<>();
+        cmbRol.addItem("(Cualquiera)");
+        cmbRol.addItem("ADMINISTRADOR");
+        cmbRol.addItem("CAJERO");
+        for (edu.uce.programacion2.tienda.negocio.Rol r : control.getFachada().listarRolesActivos())
+            cmbRol.addItem(r.getNombreCargo());
+
+        JCheckBox chkSoloActivos = new JCheckBox("Solo activos", true);
+
+        JPanel panel = new JPanel(new GridLayout(0, 2, 5, 5));
+        panel.add(new JLabel("Nombre o email contiene:")); panel.add(txtTexto);
+        panel.add(new JLabel("Rol:")); panel.add(cmbRol);
+        panel.add(chkSoloActivos); panel.add(new JLabel());
+
+        int ok = JOptionPane.showConfirmDialog(this, panel,
+                "Busqueda Avanzada de Usuarios",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+
+        CriteriosUsuario criterios = new CriteriosUsuario()
+                .texto(txtTexto.getText())
+                .rol(cmbRol.getSelectedIndex() == 0 ? null : (String) cmbRol.getSelectedItem())
+                .soloActivos(chkSoloActivos.isSelected());
+
+        if (criterios.estaVacio()) {
+            JOptionPane.showMessageDialog(this,
+                    "Ingrese al menos un criterio de busqueda.",
+                    "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        mostrarTabla(control.getTablaUsuariosPorCriterios(this, criterios),
+                "usuario(s) - Busqueda Avanzada");
+    }
+
+    private void accionProveedoresBusquedaAvanzada() {
+        JTextField txtNombre = new JTextField();
+        JTextField txtRuc = new JTextField();
+        JTextField txtTelefono = new JTextField();
+        JTextField txtEmail = new JTextField();
+        JTextField txtDireccion = new JTextField();
+        JCheckBox chkSoloActivos = new JCheckBox("Solo activos", true);
+
+        JPanel panel = new JPanel(new GridLayout(0, 2, 5, 5));
+        panel.add(new JLabel("Nombre contiene:")); panel.add(txtNombre);
+        panel.add(new JLabel("RUC contiene:")); panel.add(txtRuc);
+        panel.add(new JLabel("Telefono contiene:")); panel.add(txtTelefono);
+        panel.add(new JLabel("Email contiene:")); panel.add(txtEmail);
+        panel.add(new JLabel("Direccion contiene:")); panel.add(txtDireccion);
+        panel.add(chkSoloActivos); panel.add(new JLabel());
+
+        int ok = JOptionPane.showConfirmDialog(this, panel,
+                "Busqueda Avanzada de Proveedores",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+
+        CriteriosProveedor criterios = new CriteriosProveedor()
+                .nombre(txtNombre.getText())
+                .ruc(txtRuc.getText())
+                .telefono(txtTelefono.getText())
+                .email(txtEmail.getText())
+                .direccion(txtDireccion.getText())
+                .soloActivos(chkSoloActivos.isSelected());
+
+        if (criterios.estaVacio()) {
+            JOptionPane.showMessageDialog(this,
+                    "Ingrese al menos un criterio de busqueda.",
+                    "Aviso", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        mostrarTabla(control.getTablaProveedoresPorCriterios(this, criterios),
+                "proveedor(es) - Busqueda Avanzada");
+    }
+
+    private void accionInventariosBusquedaAvanzada() {
+        JTextField txtProducto = new JTextField();
+        JTextField txtCategoria = new JTextField();
+        JTextField txtStockMin = new JTextField();
+        JTextField txtStockMax = new JTextField();
+        JTextField txtFechaDesde = new JTextField();
+        JTextField txtFechaHasta = new JTextField();
+        JCheckBox chkSoloConAlerta = new JCheckBox("Solo con alerta de stock");
+        JCheckBox chkSoloActivos = new JCheckBox("Solo activos", true);
+
+        JPanel panel = new JPanel(new GridLayout(0, 2, 5, 5));
+        panel.add(new JLabel("Producto (nombre o codigo):")); panel.add(txtProducto);
+        panel.add(new JLabel("Clave de categoria:")); panel.add(txtCategoria);
+        panel.add(new JLabel("Stock minimo:")); panel.add(txtStockMin);
+        panel.add(new JLabel("Stock maximo:")); panel.add(txtStockMax);
+        panel.add(new JLabel("Fecha actualizacion desde (dd/MM/yyyy):")); panel.add(txtFechaDesde);
+        panel.add(new JLabel("Fecha actualizacion hasta (dd/MM/yyyy):")); panel.add(txtFechaHasta);
+        panel.add(chkSoloConAlerta); panel.add(chkSoloActivos);
+
+        int ok = JOptionPane.showConfirmDialog(this, panel,
+                "Busqueda Avanzada de Inventarios",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+
+        try {
+            CriteriosInventario criterios = new CriteriosInventario()
+                    .producto(txtProducto.getText())
+                    .categoria(txtCategoria.getText())
+                    .stockMin(parseEnteroOpcional(txtStockMin.getText()))
+                    .stockMax(parseEnteroOpcional(txtStockMax.getText()))
+                    .fechaDesde(parseFechaOpcional(txtFechaDesde.getText()))
+                    .fechaHasta(parseFechaOpcional(txtFechaHasta.getText()))
+                    .soloConAlerta(chkSoloConAlerta.isSelected())
+                    .soloActivos(chkSoloActivos.isSelected());
+
+            if (criterios.estaVacio()) {
+                JOptionPane.showMessageDialog(this,
+                        "Ingrese al menos un criterio de busqueda.",
+                        "Aviso", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            mostrarTabla(control.getTablaInventariosPorCriterios(this, criterios),
+                    "inventario(s) - Busqueda Avanzada");
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Ingrese valores numericos validos en el rango de stock.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        } catch (java.text.ParseException ex) {
+            JOptionPane.showMessageDialog(this, "Ingrese fechas validas en formato dd/MM/yyyy.",
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -909,6 +1056,11 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     private Double parseOpcional(String texto) {
         if (texto == null || texto.trim().isEmpty()) return null;
         return Double.parseDouble(texto.trim());
+    }
+
+    private Integer parseEnteroOpcional(String texto) {
+        if (texto == null || texto.trim().isEmpty()) return null;
+        return Integer.parseInt(texto.trim());
     }
 
     private java.util.Date parseFechaOpcional(String texto) throws java.text.ParseException {

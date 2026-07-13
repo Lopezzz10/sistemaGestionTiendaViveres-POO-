@@ -450,6 +450,16 @@ public class Control {
         return conversiones.inventariosATabla(lista);
     }
 
+    /**
+     * Búsqueda avanzada de inventarios: recibe varios parámetros opcionales
+     * a la vez (producto, categoría, rango de stock, rango de fechas, solo
+     * con alerta, solo activos) empaquetados en {@link CriteriosInventario}.
+     * Análoga a {@link #getTablaProductosPorCriterios}.
+     */
+    public Tabla getTablaInventariosPorCriterios(JFrame frame, CriteriosInventario criterios) {
+        return conversiones.inventariosATabla(fachada.buscarInventarios(criterios));
+    }
+
     /** Tabla de proveedores ACTIVOS (consulta de negocio típica). */
     public Tabla getTablaProveedores(JFrame frame) {
         return conversiones.proveedoresATabla(fachada.listarProveedoresActivos());
@@ -458,6 +468,16 @@ public class Control {
     /** Tabla con TODOS los proveedores, incluidos inactivos (para "Ver todos"/auditoría). */
     public Tabla getTablaTodosProveedores(JFrame frame) {
         return conversiones.proveedoresATabla(fachada.listarProveedores());
+    }
+
+    /**
+     * Búsqueda avanzada de proveedores: recibe varios parámetros opcionales
+     * a la vez (nombre, RUC, teléfono, email, dirección, solo activos)
+     * empaquetados en {@link CriteriosProveedor}.
+     * Análoga a {@link #getTablaProductosPorCriterios}.
+     */
+    public Tabla getTablaProveedoresPorCriterios(JFrame frame, CriteriosProveedor criterios) {
+        return conversiones.proveedoresATabla(fachada.buscarProveedores(criterios));
     }
 
     public Tabla getTablaVentas(JFrame frame) {
@@ -510,6 +530,15 @@ public class Control {
     /** Tabla con TODOS los usuarios, incluidos inactivos (para "Ver todos"/auditoría). */
     public Tabla getTablaTodosUsuarios(JFrame frame) {
         return conversiones.usuariosATabla(fachada.listarUsuarios());
+    }
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe varios parámetros opcionales a
+     * la vez (nombre/email parcial, rol, solo activos) empaquetados en
+     * {@link CriteriosUsuario}. Análoga a {@link #getTablaProductosPorCriterios}.
+     */
+    public Tabla getTablaUsuariosPorCriterios(JFrame frame, CriteriosUsuario criterios) {
+        return conversiones.usuariosATabla(fachada.buscarUsuarios(criterios));
     }
 
     /** Tabla de roles ACTIVOS. */

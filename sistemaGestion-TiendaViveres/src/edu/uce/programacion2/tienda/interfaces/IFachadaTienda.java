@@ -8,6 +8,8 @@ import edu.uce.programacion2.tienda.negocio.*;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosProducto;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosInventario;
+import edu.uce.programacion2.tienda.objetosServicio.CriteriosProveedor;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 
 import java.util.ArrayList;
@@ -69,6 +71,8 @@ public interface IFachadaTienda {
     ArrayList<Inventario> listarInventarios();
     ArrayList<Inventario> listarInventariosActivos();
     ArrayList<Inventario> listarInventariosConAlerta();
+    ArrayList<Inventario> buscarInventariosPor(java.util.function.Predicate<Inventario> condicion);
+    ArrayList<Inventario> buscarInventarios(CriteriosInventario criterios);
 
     // ── Ventas ────────────────────────────────────────────────────────────
 
@@ -112,6 +116,8 @@ public interface IFachadaTienda {
     void                  inactivarProveedor(int idProveedor)   throws FachadaException;
     ArrayList<Proveedor>  listarProveedores();
     ArrayList<Proveedor>  listarProveedoresActivos();
+    ArrayList<Proveedor>  buscarProveedoresPor(java.util.function.Predicate<Proveedor> condicion);
+    ArrayList<Proveedor>  buscarProveedores(CriteriosProveedor criterios);
 
     // ── Compras ───────────────────────────────────────────────────────────
 
@@ -140,6 +146,20 @@ public interface IFachadaTienda {
     ArrayList<Usuario> listarUsuarios();
     ArrayList<Usuario> listarUsuariosActivos();
     ArrayList<Usuario> listarUsuariosPorPermiso(String permiso);
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe cualquier {@link java.util.function.Predicate}
+     * y filtra la lista completa de usuarios con él.
+     * Análoga a {@code buscarProductosPor}.
+     */
+    ArrayList<Usuario> buscarUsuariosPor(java.util.function.Predicate<Usuario> condicion);
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe varios parámetros opcionales
+     * a la vez (nombre/email parcial, rol, solo activos) empaquetados en
+     * {@link edu.uce.programacion2.tienda.objetosServicio.CriteriosUsuario}.
+     */
+    ArrayList<Usuario> buscarUsuarios(edu.uce.programacion2.tienda.objetosServicio.CriteriosUsuario criterios);
 
     /** Autentica por email/contraseña y retorna el Usuario (Administrador o Cajero). */
     Usuario            autenticarUsuario(String email, String contrasena) throws FachadaException;

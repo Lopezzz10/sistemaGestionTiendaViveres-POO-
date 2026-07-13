@@ -79,11 +79,11 @@ public class FachadaArchivos implements IFachadaTienda {
             productos   = productosArchivo.cargar();
             inventarios = inventariosArchivo.cargar(productos);
             proveedores = proveedoresArchivo.cargar();
-            usuarios    = usuariosArchivo.cargar();
+            roles       = rolesArchivo.cargar();
+            usuarios    = usuariosArchivo.cargarConRoles(roles);
             ventas      = ventasArchivo.cargar(productos);
             compras     = comprasArchivo.cargar(productos, proveedores);
             facturas    = facturasArchivo.cargar(productos);
-            roles       = rolesArchivo.cargar();
             detallesFactura = detalleFacturaArchivo.cargar(productos);
         } catch (Exception e) {
             throw new FachadaException("Error al cargar los archivos de datos: " + e.getMessage(), e);
@@ -476,6 +476,28 @@ public class FachadaArchivos implements IFachadaTienda {
         return resultado;
     }
 
+    /**
+     * Búsqueda avanzada de inventarios: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de inventarios con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    @Override
+    public ArrayList<Inventario> buscarInventariosPor(Predicate<Inventario> condicion) {
+        return inventarios.stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de inventarios: recibe varios parámetros opcionales
+     * a la vez (producto, categoría, rango de stock, rango de fechas, solo
+     * con alerta, solo activos) empaquetados en {@link CriteriosInventario}.
+     */
+    @Override
+    public ArrayList<Inventario> buscarInventarios(CriteriosInventario criterios) {
+        return buscarInventariosPor(criterios.aPredicate());
+    }
+
     // ── Ventas ───────────────────────────────────────────────────────────────
 
     @Override
@@ -651,6 +673,28 @@ public class FachadaArchivos implements IFachadaTienda {
         return resultado;
     }
 
+    /**
+     * Búsqueda avanzada de proveedores: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de proveedores con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    @Override
+    public ArrayList<Proveedor> buscarProveedoresPor(Predicate<Proveedor> condicion) {
+        return proveedores.stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de proveedores: recibe varios parámetros opcionales
+     * a la vez (nombre, RUC, teléfono, email, dirección, solo activos)
+     * empaquetados en {@link CriteriosProveedor}.
+     */
+    @Override
+    public ArrayList<Proveedor> buscarProveedores(CriteriosProveedor criterios) {
+        return buscarProveedoresPor(criterios.aPredicate());
+    }
+
     @Override
     public void actualizarProveedor(Proveedor p) throws FachadaException {
         for (int i = 0; i < proveedores.size(); i++) {
@@ -815,6 +859,28 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public ArrayList<Usuario> listarUsuarios() { return new ArrayList<>(usuarios); }
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe cualquier {@link Predicate}
+     * y filtra la lista completa de usuarios con él.
+     * Análoga a {@link #buscarProductosPor}.
+     */
+    @Override
+    public ArrayList<Usuario> buscarUsuariosPor(Predicate<Usuario> condicion) {
+        return usuarios.stream()
+                .filter(condicion)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Búsqueda avanzada de usuarios: recibe varios parámetros opcionales
+     * a la vez (nombre/email parcial, rol, solo activos) empaquetados en
+     * {@link CriteriosUsuario}.
+     */
+    @Override
+    public ArrayList<Usuario> buscarUsuarios(CriteriosUsuario criterios) {
+        return buscarUsuariosPor(criterios.aPredicate());
+    }
 
     @Override
     public ArrayList<Usuario> listarUsuariosActivos() {
