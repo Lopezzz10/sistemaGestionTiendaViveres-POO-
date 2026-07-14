@@ -19,7 +19,7 @@ import java.util.Map;
  * las consultas, devolviendo objetos {@link Tabla} listos para mostrarse en
  * {@link PanelTabla}.
  *
- * @author Ana
+ * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
  */
 public class Control {
 

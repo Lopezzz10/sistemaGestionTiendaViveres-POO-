@@ -2,6 +2,7 @@ package edu.uce.programacion2.tienda.persistencia;
 
 import edu.uce.programacion2.tienda.negocio.Administrador;
 import edu.uce.programacion2.tienda.negocio.Cajero;
+import edu.uce.programacion2.tienda.negocio.Cliente;
 import edu.uce.programacion2.tienda.negocio.Rol;
 import edu.uce.programacion2.tienda.negocio.Usuario;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
@@ -27,16 +28,19 @@ import java.util.ArrayList;
  * pasado de archivo que hacia cargarConRoles().
  *
  * <pre>
- * estructura del registro (231 bytes):
- * tipo               char         2 bytes  ('A' = Administrador, 'C' = Cajero)
+ * estructura del registro (325 bytes):
+ * tipo               char         2 bytes  ('A' = Administrador, 'C' = Cajero, 'L' = Cliente)
  * idUsuario          int          4 bytes
  * nombre             40 chars    80 bytes
  * email              40 chars    80 bytes
  * contrasena         20 chars    40 bytes
- * campoEspecifico    10 chars    20 bytes  (turno o cajaAsignada como texto)
+ * campoEspecifico    10 chars    20 bytes  (turno, cajaAsignada o cedula como texto)
  * activo             boolean      1 byte
  * idRol              int          4 bytes  (-1 = sin rol asignado)
- * total:                         231 bytes
+ * direccion          30 chars    60 bytes  (solo Cliente, vacio en los demas)
+ * telefono           15 chars    30 bytes  (solo Cliente, vacio en los demas)
+ * puntosFidelidad    int          4 bytes  (solo Cliente, 0 en los demas)
+ * total:                         325 bytes
  * </pre>
  *
  * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
@@ -47,12 +51,16 @@ public class Usuarios extends AccesoAleatorio {
     private static final int TAM_EMAIL           = 40;
     private static final int TAM_CONTRASENA      = 20;
     private static final int TAM_CAMPO_ESPECIFICO= 10;
+    private static final int TAM_DIRECCION       = 30;
+    private static final int TAM_TELEFONO        = 15;
     private static final int TAM_REGISTRO =
             2 + 4 + (TAM_NOMBRE * 2) + (TAM_EMAIL * 2)
-                    + (TAM_CONTRASENA * 2) + (TAM_CAMPO_ESPECIFICO * 2) + 1 + 4; // 231
+                    + (TAM_CONTRASENA * 2) + (TAM_CAMPO_ESPECIFICO * 2) + 1 + 4
+                    + (TAM_DIRECCION * 2) + (TAM_TELEFONO * 2) + 4; // 345
 
     private static final char TIPO_ADMINISTRADOR = 'A';
     private static final char TIPO_CAJERO        = 'C';
+    private static final char TIPO_CLIENTE       = 'L';
 
     // DAO de roles usado para resolver el rol asignado a cada usuario al leerlo.
     // Puede ser null si no interesa resolver el rol (ej. en migraciones simples).
@@ -90,10 +98,19 @@ public class Usuarios extends AccesoAleatorio {
         String campoEspecifico  = leeString(TAM_CAMPO_ESPECIFICO);
         boolean activo          = archivo.readBoolean();
         int    idRol            = archivo.readInt();
+        String direccion        = leeString(TAM_DIRECCION);
+        String telefono         = leeString(TAM_TELEFONO);
+        int    puntosFidelidad  = archivo.readInt();
 
         Usuario u;
         if (tipo == TIPO_ADMINISTRADOR) {
             u = new Administrador(idUsuario, nombre, email, contrasena, campoEspecifico.trim());
+        } else if (tipo == TIPO_CLIENTE) {
+            Cliente c = new Cliente(idUsuario, nombre, email, contrasena,
+                    direccion.trim(), telefono.trim());
+            c.setCedula(campoEspecifico.trim());
+            c.setPuntosFidelidad(puntosFidelidad);
+            u = c;
         } else {
             int cajaAsignada;
             try {
@@ -120,10 +137,20 @@ public class Usuarios extends AccesoAleatorio {
     private void escribeUsuario(Usuario u) throws IOException {
         char   tipo;
         String campoEspecifico;
+        String direccion       = "";
+        String telefono        = "";
+        int    puntosFidelidad = 0;
 
         if (u instanceof Administrador) {
             tipo = TIPO_ADMINISTRADOR;
             campoEspecifico = ((Administrador) u).getTurno();
+        } else if (u instanceof Cliente) {
+            Cliente c = (Cliente) u;
+            tipo = TIPO_CLIENTE;
+            campoEspecifico = c.getCedula();
+            direccion       = c.getDireccion();
+            telefono        = c.getTelefono();
+            puntosFidelidad = c.getPuntosFidelidad();
         } else if (u instanceof Cajero) {
             tipo = TIPO_CAJERO;
             campoEspecifico = String.valueOf(((Cajero) u).getCajaAsignada());
@@ -141,6 +168,10 @@ public class Usuarios extends AccesoAleatorio {
 
         Rol rol = u.getRol();
         archivo.writeInt(rol != null ? rol.getIdRol() : -1);
+
+        escribeString(direccion, TAM_DIRECCION);
+        escribeString(telefono, TAM_TELEFONO);
+        archivo.writeInt(puntosFidelidad);
     }
 
     // Agrega un usuario nuevo al final del archivo, asignandole el siguiente id.

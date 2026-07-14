@@ -13,7 +13,8 @@ import java.awt.event.KeyEvent;
 /**
  * Ventana de acceso al sistema. Un único formulario sirve para ambos roles
  * (Administrador y Cajero): pide email + contraseña, delega la validación
- * en {@link Control#autenticarUsuario(JFrame, String, String)}, y el rol
+ * en {@link Control#
+ * autenticarUsuario(JFrame, String, String)}, y el rol
  * concreto se determina de forma polimórfica según el {@link Usuario}
  * devuelto (Administrador o Cajero).
  *
@@ -179,6 +180,8 @@ public class DlgLogin extends JDialog implements ActionListener {
                     mensaje += "\nAcceso: Administrador (todos los permisos)";
                 } else if (u.getPermiso().equals("CAJERO")) {
                     mensaje += "\nAcceso: Cajero (ventas, facturas y reportes)";
+                } else if (u.getPermiso().equals("CLIENTE")) {
+                    mensaje += "\nAcceso: Cliente (compras y consulta de puntos)";
                 }
             }
 

@@ -11,6 +11,7 @@ import edu.uce.programacion2.tienda.objetosServicio.CriteriosUsuario;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosVenta;
 import edu.uce.programacion2.tienda.objetosServicio.Permiso;
 import edu.uce.programacion2.tienda.negocio.Usuario;
+import edu.uce.programacion2.tienda.negocio.Cliente;
 
 import javax.swing.*;
 import java.awt.*;
@@ -69,6 +70,10 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     private JMenuItem miInactivarRol;
 
     // Submenús que se ocultan completos según permisos
+    private JMenu subCat;
+    private JMenu subProductos;
+    private JMenu subInv;
+    private JMenu subVen;
     private JMenu subProveedores;
     private JMenu subCompras;
     private JMenu subUsuarios;
@@ -248,7 +253,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         menuCatalogos.setFont(new Font("Segoe UI", Font.BOLD, 13));
 
         // Categorías
-        JMenu subCat = new JMenu("Categorias");
+        subCat = new JMenu("Categorias");
         miAgregarCategoria = item("Agregar Categoria");
         miActualizarCategoria = item("Actualizar Categoria");
         miInactivarCategoria = item("Inactivar Categoria");
@@ -257,7 +262,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         subCat.add(miInactivarCategoria);
 
         // Productos
-        JMenu subProductos = new JMenu("Productos");
+        subProductos = new JMenu("Productos");
         miAgregarProducto = item("Agregar Producto");
         miActualizarProducto = item("Actualizar Producto");
         miInactivarProducto = item("Inactivar Producto");
@@ -266,7 +271,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         subProductos.add(miInactivarProducto);
 
         // Inventarios
-        JMenu subInv = new JMenu("Inventarios");
+        subInv = new JMenu("Inventarios");
         miAgregarInventario = item("Agregar Inventario");
         miActualizarInventario = item("Actualizar Inventario");
         miInactivarInventario = item("Inactivar Inventario");
@@ -284,7 +289,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         subProveedores.add(miInactivarProveedor);
 
         // Ventas
-        JMenu subVen = new JMenu("Ventas");
+        subVen = new JMenu("Ventas");
         miAgregarVenta = item("Agregar Venta");
         miActualizarVenta = item("Actualizar Venta");
         miInactivarVenta = item("Inactivar Venta");
@@ -454,6 +459,26 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     private void aplicarRestriccionesPorRol() {
         if (usuarioActual == null) return;
 
+        // ── Clientes: sin acceso a ningun menu administrativo ────────────────
+        // Manejo explicito e independiente del sistema de permisos dinamicos,
+        // para garantizar que un Cliente nunca vea menus de gestion aunque
+        // tenga (por error) un Rol asignado con permisos administrativos.
+        if (usuarioActual instanceof Cliente) {
+            subCat.setVisible(false);
+            subProductos.setVisible(false);
+            subInv.setVisible(false);
+            subProveedores.setVisible(false);
+            subVen.setVisible(false);
+            subCompras.setVisible(false);
+            subUsuarios.setVisible(false);
+            subRoles.setVisible(false);
+            miListarFacturas.setVisible(false);
+            miFacturasBusquedaAvanzada.setVisible(false);
+            menuConfiguracion.setVisible(false);
+            miResumenPorCategoria.setVisible(tienePermiso(Permiso.VER_REPORTES));
+            return;
+        }
+
         // ── Verificar permisos individuales ──────────────────────────────────
 
         // Categorías
@@ -461,18 +486,21 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         miAgregarCategoria.setVisible(puedeGestionarCategorias);
         miActualizarCategoria.setVisible(puedeGestionarCategorias);
         miInactivarCategoria.setVisible(puedeGestionarCategorias);
+        subCat.setVisible(puedeGestionarCategorias);
 
         // Productos
         boolean puedeGestionarProductos = tienePermiso(Permiso.GESTIONAR_PRODUCTOS);
         miAgregarProducto.setVisible(puedeGestionarProductos);
         miActualizarProducto.setVisible(puedeGestionarProductos);
         miInactivarProducto.setVisible(puedeGestionarProductos);
+        subProductos.setVisible(puedeGestionarProductos);
 
         // Inventarios
         boolean puedeGestionarInventario = tienePermiso(Permiso.GESTIONAR_INVENTARIO);
         miAgregarInventario.setVisible(puedeGestionarInventario);
         miActualizarInventario.setVisible(puedeGestionarInventario);
         miInactivarInventario.setVisible(puedeGestionarInventario);
+        subInv.setVisible(puedeGestionarInventario);
 
         // Proveedores
         boolean puedeGestionarProveedores = tienePermiso(Permiso.GESTIONAR_PROVEEDORES);
@@ -486,6 +514,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         miAgregarVenta.setVisible(puedeGestionarVentas);
         miActualizarVenta.setVisible(puedeGestionarVentas);
         miInactivarVenta.setVisible(puedeGestionarVentas);
+        subVen.setVisible(puedeGestionarVentas);
 
         // Compras
         boolean puedeGestionarCompras = tienePermiso(Permiso.GESTIONAR_COMPRAS);
@@ -507,6 +536,14 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         miActualizarRol.setVisible(puedeGestionarRoles);
         miInactivarRol.setVisible(puedeGestionarRoles);
         subRoles.setVisible(puedeGestionarRoles);
+
+        // Facturas (no tienen Agregar/Actualizar/Inactivar propios: se
+        // generan automaticamente al procesar una Venta. La "gestion" de
+        // facturas es consultarlas, asi que este permiso oculta/muestra
+        // esas dos opciones de menu).
+        boolean puedeGestionarFacturas = tienePermiso(Permiso.GESTIONAR_FACTURAS);
+        miListarFacturas.setVisible(puedeGestionarFacturas);
+        miFacturasBusquedaAvanzada.setVisible(puedeGestionarFacturas);
 
         // Reportes
         boolean puedeVerReportes = tienePermiso(Permiso.VER_REPORTES);
@@ -748,6 +785,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
         cmbRol.addItem("(Cualquiera)");
         cmbRol.addItem("ADMINISTRADOR");
         cmbRol.addItem("CAJERO");
+        cmbRol.addItem("CLIENTE");
         for (edu.uce.programacion2.tienda.negocio.Rol r : control.getFachada().listarRolesActivos())
             cmbRol.addItem(r.getNombreCargo());
 

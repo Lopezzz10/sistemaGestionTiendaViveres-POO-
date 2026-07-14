@@ -1,7 +1,6 @@
 package edu.uce.programacion2.tienda.interfaz;
 
 import edu.uce.programacion2.tienda.negocio.*;
-import edu.uce.programacion2.tienda.objetosServicio.Dinero;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -156,7 +155,9 @@ public class PanelFactura extends JPanel {
         panelTotales.add(lblSubtotal, g);
 
         g.gridx = 0; g.gridy = 1; g.anchor = GridBagConstraints.WEST;
-        panelTotales.add(etiquetaTotalLabel("IVA (" + (int)(Dinero.getIva() * 100) + "%):"), g);
+        // Nota: el IVA puede ser mixto (tarifas distintas por categoría de producto),
+        // por eso no se etiqueta con un único porcentaje fijo (ver Factura.mostrar()).
+        panelTotales.add(etiquetaTotalLabel("IVA:"), g);
         g.gridx = 1; g.anchor = GridBagConstraints.EAST;
         lblIva = etiquetaTotalValor("$0.00");
         panelTotales.add(lblIva, g);

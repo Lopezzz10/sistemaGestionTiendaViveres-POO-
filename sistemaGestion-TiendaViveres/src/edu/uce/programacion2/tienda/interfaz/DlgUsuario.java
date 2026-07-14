@@ -4,6 +4,7 @@ import edu.uce.programacion2.tienda.excepciones.FachadaException;
 import edu.uce.programacion2.tienda.interfaces.IFachadaTienda;
 import edu.uce.programacion2.tienda.negocio.Administrador;
 import edu.uce.programacion2.tienda.negocio.Cajero;
+import edu.uce.programacion2.tienda.negocio.Cliente;
 import edu.uce.programacion2.tienda.negocio.Rol;
 import edu.uce.programacion2.tienda.negocio.Usuario;
 import edu.uce.programacion2.tienda.objetosServicio.Validaciones;
@@ -20,10 +21,11 @@ import java.util.ArrayList;
 /**
  * Diálogo para gestionar {@link Usuario} con modos AGREGAR / VER / ACTUALIZAR / INACTIVAR.
  *
- * Campos comunes: tipo, nombre, email, contraseña.
+ * Campo comunes: tipo, nombre, email, contraseña.
  * Campo dinámico según tipo:
  *   - Administrador → turno (combo: MAÑANA / TARDE / NOCHE)
  *   - Cajero        → caja asignada (campo numérico)
+ *   - Cliente       → cedula, direccion y telefono (tres campos)
  * Campo opcional: Rol (seleccionable desde los roles creados)
  *
  * En VER/ACTUALIZAR/INACTIVAR el tipo queda fijo; solo se usa CardLayout
@@ -56,6 +58,10 @@ public class DlgUsuario extends JDialog implements ActionListener {
     private JLabel            lblEspecifico;
     private JComboBox<String> cmbTurno;
     private JTextField        txtCajaAsignada;
+    private JTextField        txtCedula;
+    private JTextField        txtDireccion;
+    private JTextField        txtTelefono;
+    private JLabel            lblCedulaStatus;
     private CardLayout        cardLayout;
 
     // Rol
@@ -69,8 +75,9 @@ public class DlgUsuario extends JDialog implements ActionListener {
     private Usuario usuarioOriginal;
     private ArrayList<Rol> rolesDisponibles = new ArrayList<>();
 
-    private static final String CARD_ADMIN  = "ADMINISTRADOR";
-    private static final String CARD_CAJERO = "CAJERO";
+    private static final String CARD_ADMIN   = "ADMINISTRADOR";
+    private static final String CARD_CAJERO  = "CAJERO";
+    private static final String CARD_CLIENTE = "CLIENTE";
 
     // ── Constructores ─────────────────────────────────────────────────────────
 
@@ -146,7 +153,7 @@ public class DlgUsuario extends JDialog implements ActionListener {
         int row = 0;
 
         // Tipo de usuario
-        cmbTipoUsuario = new JComboBox<>(new String[]{"Administrador", "Cajero"});
+        cmbTipoUsuario = new JComboBox<>(new String[]{"Administrador", "Cajero", "Cliente"});
         cmbTipoUsuario.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         cmbTipoUsuario.setBackground(Color.WHITE);
         cmbTipoUsuario.addItemListener(e -> {
@@ -211,6 +218,48 @@ public class DlgUsuario extends JDialog implements ActionListener {
         txtCajaAsignada.setBackground(Color.WHITE);
         txtCajaAsignada.getDocument().addDocumentListener(docListener(() -> validarCaja()));
         pnlEspecifico.add(panelConStatus(txtCajaAsignada, lblEspecificoStatus), CARD_CAJERO);
+
+        // Card Cliente: cedula + direccion + telefono
+        JPanel pnlCliente = new JPanel(new GridBagLayout());
+        pnlCliente.setOpaque(false);
+        GridBagConstraints clc = new GridBagConstraints();
+        clc.anchor = GridBagConstraints.EAST;
+        clc.insets = new Insets(3, 0, 3, 6);
+        GridBagConstraints cfc = new GridBagConstraints();
+        cfc.fill = GridBagConstraints.HORIZONTAL;
+        cfc.weightx = 1.0;
+        cfc.insets = new Insets(3, 0, 3, 0);
+
+        txtCedula = new JTextField(16);
+        txtCedula.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        txtCedula.setBackground(Color.WHITE);
+        txtCedula.getDocument().addDocumentListener(docListener(this::validarCedula));
+        lblCedulaStatus = new JLabel(" ");
+        lblCedulaStatus.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+
+        txtDireccion = new JTextField(16);
+        txtDireccion.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        txtDireccion.setBackground(Color.WHITE);
+        txtDireccion.getDocument().addDocumentListener(docListener(this::actualizarBotonAccion));
+
+        txtTelefono = new JTextField(16);
+        txtTelefono.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        txtTelefono.setBackground(Color.WHITE);
+        txtTelefono.getDocument().addDocumentListener(docListener(this::actualizarBotonAccion));
+
+        clc.gridx = 0; clc.gridy = 0; cfc.gridx = 1; cfc.gridy = 0;
+        pnlCliente.add(new JLabel("Cedula *:"), clc);
+        pnlCliente.add(panelConStatus(txtCedula, lblCedulaStatus), cfc);
+
+        clc.gridy = 1; cfc.gridy = 1;
+        pnlCliente.add(new JLabel("Direccion *:"), clc);
+        pnlCliente.add(txtDireccion, cfc);
+
+        clc.gridy = 2; cfc.gridy = 2;
+        pnlCliente.add(new JLabel("Telefono *:"), clc);
+        pnlCliente.add(txtTelefono, cfc);
+
+        pnlEspecifico.add(pnlCliente, CARD_CLIENTE);
 
         // Etiqueta dinámica del campo específico
         lblEspecifico = new JLabel("Turno *:");
@@ -287,6 +336,12 @@ public class DlgUsuario extends JDialog implements ActionListener {
                 cmbTurno.setEnabled(false);
                 txtCajaAsignada.setEditable(false);
                 txtCajaAsignada.setBackground(new Color(235, 235, 235));
+                txtCedula.setEditable(false);
+                txtDireccion.setEditable(false);
+                txtTelefono.setEditable(false);
+                txtCedula.setBackground(new Color(235, 235, 235));
+                txtDireccion.setBackground(new Color(235, 235, 235));
+                txtTelefono.setBackground(new Color(235, 235, 235));
                 cmbRol.setEnabled(false);
                 break;
             case ACTUALIZAR:
@@ -295,6 +350,12 @@ public class DlgUsuario extends JDialog implements ActionListener {
                 cmbTurno.setEnabled(true);
                 txtCajaAsignada.setEditable(true);
                 txtCajaAsignada.setBackground(Color.WHITE);
+                txtCedula.setEditable(true);
+                txtDireccion.setEditable(true);
+                txtTelefono.setEditable(true);
+                txtCedula.setBackground(Color.WHITE);
+                txtDireccion.setBackground(Color.WHITE);
+                txtTelefono.setBackground(Color.WHITE);
                 cmbRol.setEnabled(true);
                 break;
             case INACTIVAR:
@@ -305,11 +366,40 @@ public class DlgUsuario extends JDialog implements ActionListener {
                 cmbTurno.setEnabled(false);
                 txtCajaAsignada.setEditable(false);
                 txtCajaAsignada.setBackground(new Color(235, 235, 235));
+                txtCedula.setEditable(false);
+                txtDireccion.setEditable(false);
+                txtTelefono.setEditable(false);
+                txtCedula.setBackground(new Color(235, 235, 235));
+                txtDireccion.setBackground(new Color(235, 235, 235));
+                txtTelefono.setBackground(new Color(235, 235, 235));
                 cmbRol.setEnabled(false);
                 break;
         }
 
+        // El Rol dinamico es solo para Administrador/Cajero: un Cliente
+        // nunca deberia tener uno (ver aplicarRestriccionesPorRol en
+        // VentanaPrincipal, que ademas lo ignora si llegara a tener uno).
+        actualizarEstadoRol();
+
         getRootPane().setDefaultButton(btnAccion);
+    }
+
+    /**
+     * Habilita/deshabilita y limpia el combo de Rol segun el tipo de usuario
+     * seleccionado. Los Clientes no tienen Rol dinamico: se fuerza a
+     * "(Sin rol)" y se bloquea el combo, sin importar el modo del dialogo.
+     */
+    private void actualizarEstadoRol() {
+        boolean esCliente = cmbTipoUsuario.getSelectedIndex() == 2;
+        if (esCliente) {
+            cmbRol.setSelectedIndex(0); // "(Sin rol)"
+            cmbRol.setEnabled(false);
+            cmbRol.setToolTipText("Los clientes no tienen rol dinamico asignable.");
+        } else {
+            boolean editable = (modo == Modo.AGREGAR || modo == Modo.ACTUALIZAR);
+            cmbRol.setEnabled(editable);
+            cmbRol.setToolTipText("Seleccione un rol para permisos personalizados");
+        }
     }
 
     private void setEditableComunes(boolean editable) {
@@ -355,24 +445,37 @@ public class DlgUsuario extends JDialog implements ActionListener {
             cardLayout.show(pnlEspecifico, CARD_CAJERO);
             lblEspecifico.setText("Caja asignada *:");
             txtCajaAsignada.setText(String.valueOf(((Cajero) u).getCajaAsignada()));
+        } else if (u instanceof Cliente) {
+            cmbTipoUsuario.setSelectedIndex(2);
+            cardLayout.show(pnlEspecifico, CARD_CLIENTE);
+            lblEspecifico.setText("Datos Cliente *:");
+            Cliente c = (Cliente) u;
+            txtCedula.setText(c.getCedula());
+            txtDireccion.setText(c.getDireccion());
+            txtTelefono.setText(c.getTelefono());
         }
 
         validarNombre();
         validarEmail();
         validarContrasena();
+        validarCedula();
     }
 
     // ── Campo dinámico ────────────────────────────────────────────────────────
 
     private void cambiarCampoEspecifico() {
-        boolean esAdmin = cmbTipoUsuario.getSelectedIndex() == 0;
-        if (esAdmin) {
+        int idx = cmbTipoUsuario.getSelectedIndex();
+        if (idx == 0) {
             lblEspecifico.setText("Turno *:");
             cardLayout.show(pnlEspecifico, CARD_ADMIN);
-        } else {
+        } else if (idx == 1) {
             lblEspecifico.setText("Caja asignada *:");
             cardLayout.show(pnlEspecifico, CARD_CAJERO);
+        } else {
+            lblEspecifico.setText("Datos Cliente *:");
+            cardLayout.show(pnlEspecifico, CARD_CLIENTE);
         }
+        actualizarEstadoRol();
         actualizarBotonAccion();
     }
 
@@ -400,8 +503,7 @@ public class DlgUsuario extends JDialog implements ActionListener {
 
     private void validarContrasena() {
         String v = new String(txtContrasena.getPassword()).trim();
-        boolean esAdmin = cmbTipoUsuario.getSelectedIndex() == 0;
-        int minLen = esAdmin ? 8 : 6;
+        int minLen = minPassPorTipo();
         boolean ok = v.length() >= minLen;
         lblContrasenaStatus.setText(ok ? "(OK)" : "(O)");
         lblContrasenaStatus.setForeground(ok ? new Color(0, 130, 0) : new Color(180, 0, 0));
@@ -409,6 +511,11 @@ public class DlgUsuario extends JDialog implements ActionListener {
         if (txtContrasena.isEditable())
             txtContrasena.setBackground(ok || v.isEmpty() ? Color.WHITE : new Color(255, 240, 240));
         actualizarBotonAccion();
+    }
+
+    /** Admin exige contrasena mas larga; Cajero y Cliente comparten el minimo estandar. */
+    private int minPassPorTipo() {
+        return cmbTipoUsuario.getSelectedIndex() == 0 ? 8 : 6;
     }
 
     private void validarCaja() {
@@ -422,20 +529,34 @@ public class DlgUsuario extends JDialog implements ActionListener {
         actualizarBotonAccion();
     }
 
+    private void validarCedula() {
+        String v = txtCedula.getText().trim();
+        boolean ok = v.length() >= 5;
+        lblCedulaStatus.setText(ok ? "(OK)" : "(O)");
+        lblCedulaStatus.setForeground(ok ? new Color(0, 130, 0) : new Color(180, 0, 0));
+        if (txtCedula.isEditable())
+            txtCedula.setBackground(ok || v.isEmpty() ? Color.WHITE : new Color(255, 240, 240));
+        actualizarBotonAccion();
+    }
+
     private void actualizarBotonAccion() {
         if (modo == Modo.VER || modo == Modo.INACTIVAR) return;
 
-        boolean esAdmin = cmbTipoUsuario.getSelectedIndex() == 0;
-        int minPass = esAdmin ? 8 : 6;
+        int tipo = cmbTipoUsuario.getSelectedIndex();
+        int minPass = minPassPorTipo();
         String pass = new String(txtContrasena.getPassword()).trim();
         String email = txtEmail.getText().trim();
 
         boolean campoEspecificoOk;
-        if (esAdmin) {
+        if (tipo == 0) {
             campoEspecificoOk = true;
-        } else {
+        } else if (tipo == 1) {
             String caja = txtCajaAsignada.getText().trim();
             campoEspecificoOk = !caja.isEmpty() && Validaciones.validarEnteroPositivo(caja, "caja") == null;
+        } else {
+            campoEspecificoOk = txtCedula.getText().trim().length() >= 5
+                    && !txtDireccion.getText().trim().isEmpty()
+                    && !txtTelefono.getText().trim().isEmpty();
         }
 
         boolean valido = txtNombre.getText().trim().length() >= 3
@@ -553,14 +674,18 @@ public class DlgUsuario extends JDialog implements ActionListener {
         } else {
             txtNombre.setText(""); txtEmail.setText(""); txtContrasena.setText("");
             txtCajaAsignada.setText("");
+            txtCedula.setText(""); txtDireccion.setText(""); txtTelefono.setText("");
             cmbTipoUsuario.setSelectedIndex(0);
             cmbTurno.setSelectedIndex(0);
             cmbRol.setSelectedIndex(0);
             lblNombreStatus.setText(" "); lblEmailStatus.setText(" ");
             lblContrasenaStatus.setText(" "); lblEspecificoStatus.setText(" ");
+            lblCedulaStatus.setText(" ");
             lblRolStatus.setText(" ");
             txtNombre.setBackground(Color.WHITE); txtEmail.setBackground(Color.WHITE);
             txtContrasena.setBackground(Color.WHITE); txtCajaAsignada.setBackground(Color.WHITE);
+            txtCedula.setBackground(Color.WHITE); txtDireccion.setBackground(Color.WHITE);
+            txtTelefono.setBackground(Color.WHITE);
             btnAccion.setEnabled(false);
         }
         JOptionPane.showMessageDialog(this, "Datos restaurados.", "Informacion", JOptionPane.INFORMATION_MESSAGE);
@@ -575,8 +700,8 @@ public class DlgUsuario extends JDialog implements ActionListener {
         String nombre    = txtNombre.getText().trim();
         String email     = txtEmail.getText().trim();
         String contrasena = new String(txtContrasena.getPassword()).trim();
-        boolean esAdmin  = cmbTipoUsuario.getSelectedIndex() == 0;
-        int minPass      = esAdmin ? 8 : 6;
+        int tipo         = cmbTipoUsuario.getSelectedIndex();
+        int minPass      = minPassPorTipo();
 
         // Validaciones con mensajes descriptivos
         if (nombre.length() < 3) {
@@ -602,10 +727,10 @@ public class DlgUsuario extends JDialog implements ActionListener {
         }
 
         Usuario usuario;
-        if (esAdmin) {
+        if (tipo == 0) {
             String turno = (String) cmbTurno.getSelectedItem();
             usuario = new Administrador(id, nombre, email, contrasena, turno);
-        } else {
+        } else if (tipo == 1) {
             String cajaStr = txtCajaAsignada.getText().trim();
             String errorCaja = Validaciones.validarEnteroPositivo(cajaStr, "numero de caja");
             if (errorCaja != null) {
@@ -615,6 +740,31 @@ public class DlgUsuario extends JDialog implements ActionListener {
             }
             int caja = Integer.parseInt(cajaStr);
             usuario = new Cajero(id, nombre, email, contrasena, caja);
+        } else {
+            String cedula = txtCedula.getText().trim();
+            String direccion = txtDireccion.getText().trim();
+            String telefono = txtTelefono.getText().trim();
+            if (cedula.length() < 5) {
+                JOptionPane.showMessageDialog(this,
+                        "La cedula debe tener al menos 5 caracteres.", "Validacion", JOptionPane.WARNING_MESSAGE);
+                txtCedula.requestFocus();
+                return null;
+            }
+            if (direccion.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "La direccion es obligatoria.", "Validacion", JOptionPane.WARNING_MESSAGE);
+                txtDireccion.requestFocus();
+                return null;
+            }
+            if (telefono.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                        "El telefono es obligatorio.", "Validacion", JOptionPane.WARNING_MESSAGE);
+                txtTelefono.requestFocus();
+                return null;
+            }
+            Cliente cliente = new Cliente(id, nombre, email, contrasena, direccion, telefono);
+            cliente.setCedula(cedula);
+            usuario = cliente;
         }
 
         return usuario;

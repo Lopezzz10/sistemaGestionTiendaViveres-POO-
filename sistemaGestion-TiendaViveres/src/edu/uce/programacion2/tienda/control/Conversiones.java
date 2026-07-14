@@ -8,7 +8,7 @@ import java.util.ArrayList;
  * Convierte colecciones de objetos de negocio en {@link Tabla} para
  * su presentación en PanelTabla.
  *
- * @author Ana
+ * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
  */
 public class Conversiones {
 
@@ -202,16 +202,19 @@ public class Conversiones {
     // ── Usuarios ──────────────────────────────────────────────────────────
 
     public Tabla usuariosATabla(ArrayList<Usuario> lista) {
-        String[]   cols  = { "ID", "Nombre", "Email", "Permiso", "Rol" };
+        String[]   cols  = { "ID", "Nombre", "Email", "Permiso", "Tipo" };
         Object[][] filas = new Object[lista.size()][5];
         for (int i = 0; i < lista.size(); i++) {
             Usuario u  = lista.get(i);
-            String  rol = (u instanceof Administrador) ? "Administrador" : "Cajero";
+            String  tipo;
+            if (u instanceof Administrador)      tipo = "Administrador";
+            else if (u instanceof Cliente)        tipo = "Cliente";
+            else                                   tipo = "Cajero";
             filas[i][0] = u.getIdUsuario();
             filas[i][1] = u.getNombre();
             filas[i][2] = u.getEmail();
             filas[i][3] = u.getPermiso();
-            filas[i][4] = rol;
+            filas[i][4] = tipo;
         }
         return new Tabla("Usuarios", cols, filas);
     }

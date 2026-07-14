@@ -41,7 +41,7 @@ public class CriteriosUsuario {
         return this;
     }
 
-    /** Rol/permiso exacto: "ADMINISTRADOR", "CAJERO" o el nombre de un cargo dinámico. */
+    /** Rol/permiso exacto: "ADMINISTRADOR", "CAJERO", "CLIENTE" o el nombre de un cargo dinámico. */
     public CriteriosUsuario rol(String rol) {
         this.rol = rol;
         return this;

@@ -346,8 +346,7 @@ public class FachadaArchivos implements IFachadaTienda {
 
     private boolean existeInventarioParaProducto(String codigoProducto) {
         try {
-            inventariosDAO.buscarPorProducto(codigoProducto);
-            return true;
+            return inventariosDAO.buscarPorProducto(codigoProducto) != null;
         } catch (PersistenciaException pe) {
             return false;
         }

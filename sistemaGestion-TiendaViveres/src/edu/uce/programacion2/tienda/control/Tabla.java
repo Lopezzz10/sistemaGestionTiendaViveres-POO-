@@ -4,7 +4,7 @@ package edu.uce.programacion2.tienda.control;
  * Representa los datos de una tabla de consulta: un título descriptivo,
  * los nombres de las columnas y la matriz de filas a mostrar.
  *
- * @author Ana
+ * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
  */
 public class Tabla {
 

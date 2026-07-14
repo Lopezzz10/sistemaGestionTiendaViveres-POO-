@@ -21,6 +21,7 @@ public class DlgVenta extends JDialog {
     private JComboBox<String> cmbMetodoPago;
     private JComboBox<String> cmbEstado;
     private JComboBox<String> cmbProducto;
+    private JComboBox<String> cmbCliente;
     private JTextField txtCantidad;
     private JButton btnAgregarProducto;
     private JButton btnQuitarProducto;
@@ -31,6 +32,7 @@ public class DlgVenta extends JDialog {
     private JButton btnCancelar;
 
     private ArrayList<Producto> productosDisponibles = new ArrayList<>();
+    private ArrayList<Cliente> clientesDisponibles = new ArrayList<>();
 
     public DlgVenta(JFrame parent, IFachadaTienda fachada, Modo modo) {
         super(parent, true);
@@ -47,6 +49,7 @@ public class DlgVenta extends JDialog {
         setLocationRelativeTo(parent);
         setResizable(false);
         cargarProductos();
+        cargarClientes();
         initComponentes();
     }
 
@@ -54,6 +57,14 @@ public class DlgVenta extends JDialog {
         try {
             productosDisponibles.addAll(fachada.listarProductos());
         } catch (FachadaException e) { /* catálogo vacío o error de carga */ }
+    }
+
+    private void cargarClientes() {
+        for (Usuario u : fachada.listarUsuariosPorPermiso("CLIENTE")) {
+            if (u instanceof Cliente && u.isActivo()) {
+                clientesDisponibles.add((Cliente) u);
+            }
+        }
     }
 
     private void initComponentes() {
@@ -123,8 +134,24 @@ public class DlgVenta extends JDialog {
         gbc.gridwidth = 1;
 
         if (modo == Modo.AGREGAR) {
-            // Producto selector
+            // Cliente
             gbc.gridx = 0; gbc.gridy = 3;
+            JLabel lblCliente = new JLabel("Cliente:");
+            lblCliente.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            lblCliente.setForeground(new Color(50, 50, 50));
+            panel.add(lblCliente, gbc);
+            gbc.gridx = 1; gbc.gridwidth = 2;
+            cmbCliente = new JComboBox<>();
+            cmbCliente.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+            cmbCliente.setBackground(Color.WHITE);
+            cmbCliente.addItem("(Sin cliente)");
+            for (Cliente c : clientesDisponibles)
+                cmbCliente.addItem(c.getNombre() + " - " + c.getEmail());
+            panel.add(cmbCliente, gbc);
+            gbc.gridwidth = 1;
+
+            // Producto selector
+            gbc.gridx = 0; gbc.gridy = 4;
             JLabel lblProducto = new JLabel("Producto:");
             lblProducto.setFont(new Font("Segoe UI", Font.BOLD, 13));
             lblProducto.setForeground(new Color(50, 50, 50));
@@ -143,7 +170,7 @@ public class DlgVenta extends JDialog {
             gbc.gridwidth = 1;
 
             // Cantidad
-            gbc.gridx = 0; gbc.gridy = 4;
+            gbc.gridx = 0; gbc.gridy = 5;
             JLabel lblCantidad = new JLabel("Cantidad:");
             lblCantidad.setFont(new Font("Segoe UI", Font.BOLD, 13));
             lblCantidad.setForeground(new Color(50, 50, 50));
@@ -155,7 +182,7 @@ public class DlgVenta extends JDialog {
             panel.add(txtCantidad, gbc);
 
             // Botón agregar producto
-            gbc.gridx = 2; gbc.gridy = 4;
+            gbc.gridx = 2; gbc.gridy = 5;
             btnAgregarProducto = new JButton("+ Agregar");
             btnAgregarProducto.setFont(new Font("Segoe UI", Font.BOLD, 12));
             btnAgregarProducto.setBackground(new Color(70, 130, 180));
@@ -169,7 +196,7 @@ public class DlgVenta extends JDialog {
             panel.add(btnAgregarProducto, gbc);
 
             // Tabla de productos seleccionados
-            gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 3;
+            gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 3;
             modeloTabla = new DefaultTableModel(
                     new Object[]{"Producto", "Cantidad", "Precio Unit.", "Subtotal"}, 0) {
                 public boolean isCellEditable(int r, int c) { return false; }
@@ -187,7 +214,7 @@ public class DlgVenta extends JDialog {
             gbc.gridwidth = 1;
 
             // Botón quitar producto
-            gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 3;
+            gbc.gridx = 0; gbc.gridy = 7; gbc.gridwidth = 3;
             btnQuitarProducto = new JButton("- Quitar seleccionado");
             btnQuitarProducto.setFont(new Font("Segoe UI", Font.BOLD, 12));
             btnQuitarProducto.setBackground(new Color(180, 80, 80));
@@ -202,7 +229,7 @@ public class DlgVenta extends JDialog {
             gbc.gridwidth = 1;
 
             // Total
-            gbc.gridx = 0; gbc.gridy = 7;
+            gbc.gridx = 0; gbc.gridy = 8;
             JLabel lblTotalLabel = new JLabel("Total:");
             lblTotalLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
             lblTotalLabel.setForeground(new Color(50, 50, 50));
@@ -280,7 +307,7 @@ public class DlgVenta extends JDialog {
         panelBotones.add(btnAceptar);
         panelBotones.add(btnCancelar);
 
-        gbc.gridx = 0; gbc.gridy = 8; gbc.gridwidth = 3;
+        gbc.gridx = 0; gbc.gridy = (modo == Modo.AGREGAR ? 9 : 8); gbc.gridwidth = 3;
         gbc.insets = new Insets(10, 5, 0, 5);
         panel.add(panelBotones, gbc);
 
@@ -315,17 +342,44 @@ public class DlgVenta extends JDialog {
                     //    queda asignado en v.getIdVenta() tras este llamado) ──
                     fachada.registrarVenta(v);
 
-                    // ── Crear y emitir la factura automáticamente ─────────  ← NUEVO
-                    String numeroFactura = String.format("001-001-%09d", Factura.getTotalFacturas() + 1);
-                    Factura factura = new Factura(v.getIdVenta(), numeroFactura, v, null, null);
-                    fachada.emitirFactura(factura);
-                    // ──────────────────────────────────────────────────────
+                    // ── Crear y emitir la factura automáticamente ─────────
+                    // Venta y Factura deben quedar consistentes entre si: si
+                    // la venta se registro pero la factura falla, no queremos
+                    // dejar una venta "huerfana" sin factura. Como la fachada
+                    // no ofrece una eliminacion fisica de Venta, la compensacion
+                    // es inactivarla (rollback logico) y avisar al usuario.
+                    try {
+                        String numeroFactura = String.format("001-001-%09d", Factura.getTotalFacturas() + 1);
+                        Cliente clienteSeleccionado = null;
+                        int idxCliente = cmbCliente.getSelectedIndex();
+                        if (idxCliente > 0) {
+                            clienteSeleccionado = clientesDisponibles.get(idxCliente - 1);
+                        }
+                        Factura factura = new Factura(v.getIdVenta(), numeroFactura, v, clienteSeleccionado, null);
+                        fachada.emitirFactura(factura);
 
-                    JOptionPane.showMessageDialog(this,
-                            "Venta registrada correctamente.\n" +
-                                    "ID asignado: " + v.getIdVenta() + "\n" +
-                                    "Factura generada: " + numeroFactura,
-                            "Éxito", JOptionPane.INFORMATION_MESSAGE);
+                        JOptionPane.showMessageDialog(this,
+                                "Venta registrada correctamente.\n" +
+                                        "ID asignado: " + v.getIdVenta() + "\n" +
+                                        "Factura generada: " + numeroFactura,
+                                "Éxito", JOptionPane.INFORMATION_MESSAGE);
+
+                    } catch (FachadaException efact) {
+                        // Rollback logico de la venta ya registrada para no
+                        // dejar el sistema en un estado inconsistente.
+                        try {
+                            fachada.inactivarVenta(v.getIdVenta());
+                        } catch (FachadaException erollback) {
+                            // Si ni siquiera se pudo inactivar, se informa
+                            // igual para que el usuario revise manualmente.
+                        }
+                        JOptionPane.showMessageDialog(this,
+                                "No se pudo generar la factura: " + efact.getMessage() + "\n" +
+                                        "La venta #" + v.getIdVenta() + " fue anulada automáticamente " +
+                                        "para mantener la consistencia de los datos.",
+                                "Error al facturar", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
 
                 } else {
                     String idStr = txtId.getText().trim();
