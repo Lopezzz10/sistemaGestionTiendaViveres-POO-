@@ -136,6 +136,21 @@ public class DetallesCompra extends AccesoAleatorio {
         return resultado;
     }
 
+    /**
+     * Lee el archivo de detalles UNA SOLA VEZ y los agrupa por idCompra.
+     * Se usa desde Compras.obtenerTodos() para evitar reabrir y releer todo
+     * el archivo de detalles una vez por cada compra (lo cual era N+1:
+     * con N compras se leia el archivo completo N veces).
+     */
+    public java.util.Map<Integer, ArrayList<DetalleCompra>> obtenerAgrupadoPorCompra()
+            throws PersistenciaException {
+        java.util.Map<Integer, ArrayList<DetalleCompra>> mapa = new java.util.HashMap<>();
+        for (Registro r : obtenerTodosLosRegistros()) {
+            mapa.computeIfAbsent(r.idCompra, k -> new ArrayList<>()).add(r.detalle);
+        }
+        return mapa;
+    }
+
     // Devuelve todos los registros (idCompra + detalle) del archivo.
     private ArrayList<Registro> obtenerTodosLosRegistros() throws PersistenciaException {
         ArrayList<Registro> lista = new ArrayList<>();

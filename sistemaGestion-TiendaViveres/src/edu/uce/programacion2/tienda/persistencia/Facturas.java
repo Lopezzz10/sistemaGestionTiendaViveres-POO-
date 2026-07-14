@@ -299,9 +299,23 @@ public class Facturas extends AccesoAleatorio {
     // Devuelve todas las facturas registradas, cada una con sus lineas fiscales adjuntas.
     public ArrayList<Factura> obtenerTodos() throws PersistenciaException {
         ArrayList<Factura> lista = obtenerTodosLosEncabezados();
+
+        // En vez de llamar a conDetalles(f) por cada factura -- lo que reabria
+        // y releia el archivo de detalles completo una vez por factura -- se
+        // lee ese archivo UNA SOLA VEZ y se agrupa por idFactura en memoria.
+        java.util.Map<Integer, ArrayList<DetalleFactura>> detallesPorFactura =
+                (detallesFacturaDAO != null)
+                        ? detallesFacturaDAO.obtenerAgrupadoPorFactura()
+                        : new java.util.HashMap<>();
+
         ArrayList<Factura> conTodosLosDetalles = new ArrayList<>();
         for (Factura f : lista) {
-            conTodosLosDetalles.add(conDetalles(f));
+            ArrayList<DetalleFactura> persistidos = detallesPorFactura.get(f.getIdFactura());
+            if (persistidos != null && !persistidos.isEmpty()) {
+                f.getDetalles().clear();
+                for (DetalleFactura d : persistidos) f.agregarDetalle(d);
+            }
+            conTodosLosDetalles.add(f);
         }
         return conTodosLosDetalles;
     }

@@ -291,9 +291,24 @@ public class Compras extends AccesoAleatorio {
             throw new PersistenciaException("Error al obtener las compras.");
         }
 
+        // En vez de llamar a conDetalles(c) por cada compra -- lo que reabria
+        // y releia el archivo de detalles completo una vez por compra -- se
+        // lee ese archivo UNA SOLA VEZ y se agrupa por idCompra en memoria.
+        java.util.Map<Integer, ArrayList<edu.uce.programacion2.tienda.negocio.DetalleCompra>> detallesPorCompra =
+                (detallesCompraDAO != null)
+                        ? detallesCompraDAO.obtenerAgrupadoPorCompra()
+                        : new java.util.HashMap<>();
+
         ArrayList<Compra> conTodosLosDetalles = new ArrayList<>();
         for (Compra c : lista) {
-            conTodosLosDetalles.add(conDetalles(c));
+            ArrayList<edu.uce.programacion2.tienda.negocio.DetalleCompra> detalles =
+                    detallesPorCompra.get(c.getIdCompra());
+            if (detalles != null) {
+                for (edu.uce.programacion2.tienda.negocio.DetalleCompra d : detalles) {
+                    c.agregarDetalle(d);
+                }
+            }
+            conTodosLosDetalles.add(c);
         }
         return conTodosLosDetalles;
     }

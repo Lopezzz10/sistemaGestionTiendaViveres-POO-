@@ -147,6 +147,21 @@ public class DetallesFactura extends AccesoAleatorio {
         return resultado;
     }
 
+    /**
+     * Lee el archivo de detalles UNA SOLA VEZ y los agrupa por idFactura.
+     * Se usa desde Facturas.obtenerTodos() para evitar reabrir y releer todo
+     * el archivo de detalles una vez por cada factura (N+1: con N facturas
+     * se leia el archivo completo N veces).
+     */
+    public java.util.Map<Integer, ArrayList<DetalleFactura>> obtenerAgrupadoPorFactura()
+            throws PersistenciaException {
+        java.util.Map<Integer, ArrayList<DetalleFactura>> mapa = new java.util.HashMap<>();
+        for (Registro r : obtenerTodosLosRegistros()) {
+            mapa.computeIfAbsent(r.idFactura, k -> new ArrayList<>()).add(r.detalle);
+        }
+        return mapa;
+    }
+
     // Devuelve todos los registros (idFactura + detalle) del archivo.
     private ArrayList<Registro> obtenerTodosLosRegistros() throws PersistenciaException {
         ArrayList<Registro> lista = new ArrayList<>();

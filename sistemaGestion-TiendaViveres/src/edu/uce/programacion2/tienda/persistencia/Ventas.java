@@ -260,9 +260,25 @@ public class Ventas extends AccesoAleatorio {
         // Adjuntamos los detalles fuera del bloque anterior para no anidar
         // dos RandomAccessFile abiertos al mismo tiempo (este y el de
         // DetallesVenta, que abre su propio archivo internamente).
+        //
+        // En vez de llamar a conDetalles(v) por cada venta -- lo que reabria
+        // y releia el archivo de detalles completo una vez por venta -- se
+        // lee ese archivo UNA SOLA VEZ y se agrupa por idVenta en memoria.
+        java.util.Map<Integer, ArrayList<edu.uce.programacion2.tienda.negocio.DetalleVenta>> detallesPorVenta =
+                (detallesVentaDAO != null)
+                        ? detallesVentaDAO.obtenerAgrupadoPorVenta()
+                        : new java.util.HashMap<>();
+
         ArrayList<Venta> conTodosLosDetalles = new ArrayList<>();
         for (Venta v : lista) {
-            conTodosLosDetalles.add(conDetalles(v));
+            ArrayList<edu.uce.programacion2.tienda.negocio.DetalleVenta> detalles =
+                    detallesPorVenta.get(v.getIdVenta());
+            if (detalles != null) {
+                for (edu.uce.programacion2.tienda.negocio.DetalleVenta d : detalles) {
+                    v.agregarDetalle(d);
+                }
+            }
+            conTodosLosDetalles.add(v);
         }
         return conTodosLosDetalles;
     }
