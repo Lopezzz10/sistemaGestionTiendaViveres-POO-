@@ -2,6 +2,7 @@ package edu.uce.programacion2.tienda.fachadas;
 
 import edu.uce.programacion2.tienda.excepciones.CategoriaNoEncontradaException;
 import edu.uce.programacion2.tienda.excepciones.FachadaException;
+import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.excepciones.ProductoNoEncontradoException;
 import edu.uce.programacion2.tienda.excepciones.StockInsuficienteException;
 import edu.uce.programacion2.tienda.interfaces.IFachadaTienda;
@@ -20,299 +21,237 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * Implementación de {@link IFachadaTienda} con persistencia en archivos de datos.
+ * Implementación de {@link IFachadaTienda} con persistencia en archivos
+ * binarios de ACCESO ALEATORIO (registro de tamaño fijo).
+ *
+ * A diferencia de la version anterior (que cargaba TODO a listas en
+ * memoria al arrancar y volvia a escribir el archivo COMPLETO en cada
+ * cambio), esta version delega cada operacion directamente al DAO
+ * correspondiente, que hace seek() a la posicion exacta del registro. No
+ * hay listas en memoria como fuente de verdad: cada metodo lee/escribe el
+ * archivo en el momento en que se le pide.
  *
  * Arquitectura de capas:
  *   VentanaPrincipal / Control
  *          ↓
  *   FachadaArchivos   ← único punto de acceso (implementa IFachadaTienda)
  *          ↓
- *   CategoriasArchivo / ProductosArchivo / InventariosArchivo
- *   ProveedoresArchivo / UsuariosArchivo / VentasArchivo
- *   ComprasArchivo / FacturasArchivo
+ *   Categorias / Productos / Inventarios / Proveedores / Roles / Usuarios
+ *   Ventas+DetallesVenta / Compras+DetallesCompra / Facturas+DetallesFactura
+ *          ↓
+ *   AccesoAleatorio (RandomAccessFile, seek por numRegistro * tamRegistro)
  *
- * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
+ * Manejo de excepciones: los DAOs lanzan {@link PersistenciaException}
+ * (checked). Los metodos de {@link IFachadaTienda} que la declaran
+ * (mayoria de operaciones CRUD) la re-envuelven en {@link FachadaException}.
+ * Los metodos de la interfaz que NO declaran ninguna excepcion (las
+ * consultas/listados, heredadas del diseño original en memoria que nunca
+ * fallaba) no pueden propagar una excepcion checked: si el DAO falla ahi,
+ * se re-envuelve en una {@link RuntimeException} (ver {@link #sinChequeo}).
+ *
+ * @author Equipo08
  */
 public class FachadaArchivos implements IFachadaTienda {
 
     private static final String NOMBRE_TIENDA = "TiendaViveres";
 
-    // ── Objetos de acceso a archivos ─────────────────────────────────────────
-    private final CategoriasArchivo  categoriasArchivo;
-    private final ProductosArchivo   productosArchivo;
-    private final InventariosArchivo inventariosArchivo;
-    private final ProveedoresArchivo proveedoresArchivo;
-    private final UsuariosArchivo    usuariosArchivo;
-    private final VentasArchivo      ventasArchivo;
-    private final ComprasArchivo     comprasArchivo;
-    private final FacturasArchivo    facturasArchivo;
-    private final RolesArchivo       rolesArchivo;
-    private final DetalleFacturaArchivo detalleFacturaArchivo;
+    // ── DAOs de acceso aleatorio ──────────────────────────────────────────
+    private final Categorias  categoriasDAO;
+    private final Productos   productosDAO;
+    private final Inventarios inventariosDAO;
+    private final Proveedores proveedoresDAO;
+    private final Roles       rolesDAO;
+    private final Usuarios    usuariosDAO;
+    private final DetallesVenta   detallesVentaDAO;
+    private final Ventas          ventasDAO;
+    private final DetallesCompra  detallesCompraDAO;
+    private final Compras         comprasDAO;
+    private final DetallesFactura detallesFacturaDAO;
+    private final Facturas        facturasDAO;
 
-    // ── Listas en memoria ────────────────────────────────────────────────────
-    private ArrayList<Categoria>  categorias;
-    private ArrayList<Producto>   productos;
-    private ArrayList<Inventario> inventarios;
-    private ArrayList<Proveedor>  proveedores;
-    private ArrayList<Usuario>    usuarios;
-    private ArrayList<Venta>      ventas;
-    private ArrayList<Compra>     compras;
-    private ArrayList<Factura>    facturas;
-    private ArrayList<Rol>        roles;
-    private ArrayList<edu.uce.programacion2.tienda.persistencia.DetalleFactura.Registro> detallesFactura;
-
-    // ── Constructor ──────────────────────────────────────────────────────────
+    // ── Constructor ──────────────────────────────────────────────────────
 
     public FachadaArchivos() throws FachadaException {
-        categoriasArchivo  = new CategoriasArchivo();
-        productosArchivo   = new ProductosArchivo();
-        inventariosArchivo = new InventariosArchivo();
-        proveedoresArchivo = new ProveedoresArchivo();
-        usuariosArchivo    = new UsuariosArchivo();
-        ventasArchivo      = new VentasArchivo();
-        comprasArchivo     = new ComprasArchivo();
-        facturasArchivo    = new FacturasArchivo();
-        rolesArchivo       = new RolesArchivo();
-        detalleFacturaArchivo = new DetalleFacturaArchivo();
-        try {
-            categorias  = categoriasArchivo.cargar();
-            productos   = productosArchivo.cargar();
-            inventarios = inventariosArchivo.cargar(productos);
-            proveedores = proveedoresArchivo.cargar();
-            roles       = rolesArchivo.cargar();
-            usuarios    = usuariosArchivo.cargarConRoles(roles);
-            ventas      = ventasArchivo.cargar(productos);
-            compras     = comprasArchivo.cargar(productos, proveedores);
-            facturas    = facturasArchivo.cargar(productos);
-            detallesFactura = detalleFacturaArchivo.cargar(productos);
-        } catch (Exception e) {
-            throw new FachadaException("Error al cargar los archivos de datos: " + e.getMessage(), e);
-        }
+        // Los constructores de los DAOs no hacen E/S (solo fijan el nombre
+        // de archivo y el tamaño de registro), asi que en principio esto
+        // no deberia lanzar FachadaException. Se conserva el "throws" para
+        // no romper a Control.java, que ya maneja esta excepcion, y por si
+        // en el futuro se agrega alguna validacion de arranque aqui.
+        categoriasDAO      = new Categorias();
+        productosDAO       = new Productos("productos.dat", categoriasDAO);
+        inventariosDAO     = new Inventarios("inventarios.dat", productosDAO);
+        proveedoresDAO     = new Proveedores();
+        rolesDAO           = new Roles();
+        usuariosDAO        = new Usuarios("usuarios.dat", rolesDAO);
+        detallesVentaDAO   = new DetallesVenta("detallesVenta.dat", productosDAO);
+        ventasDAO          = new Ventas("ventas.dat", detallesVentaDAO);
+        detallesCompraDAO  = new DetallesCompra("detallesCompra.dat", productosDAO);
+        comprasDAO         = new Compras("compras.dat", detallesCompraDAO, proveedoresDAO, usuariosDAO);
+        detallesFacturaDAO = new DetallesFactura("detallesFactura.dat", productosDAO);
+        facturasDAO        = new Facturas("facturas.dat", detallesFacturaDAO, ventasDAO, usuariosDAO);
     }
 
     public static String getNombreTienda() { return NOMBRE_TIENDA; }
 
-    // ── Métodos privados de guardado ─────────────────────────────────────────
+    // ── Helpers de manejo de excepciones ─────────────────────────────────
 
-    private void guardarCategorias() throws FachadaException {
-        try { categoriasArchivo.guardar(categorias); }
-        catch (Exception e) { throw new FachadaException("Error al guardar categorias.dat", e); }
+    @FunctionalInterface
+    private interface Operacion<T> { T ejecutar() throws PersistenciaException; }
+
+    @FunctionalInterface
+    private interface OperacionVoid { void ejecutar() throws PersistenciaException; }
+
+    /** Para metodos de la interfaz que SI declaran throws FachadaException. */
+    private <T> T conChecked(Operacion<T> op) throws FachadaException {
+        try {
+            return op.ejecutar();
+        } catch (PersistenciaException pe) {
+            throw new FachadaException(pe.getMessage(), pe);
+        }
     }
 
-    private void guardarProductos() throws FachadaException {
-        try { productosArchivo.guardar(productos); }
-        catch (Exception e) { throw new FachadaException("Error al guardar productos.dat", e); }
+    private void conCheckedVoid(OperacionVoid op) throws FachadaException {
+        try {
+            op.ejecutar();
+        } catch (PersistenciaException pe) {
+            throw new FachadaException(pe.getMessage(), pe);
+        }
     }
 
-    private void guardarInventarios() throws FachadaException {
-        try { inventariosArchivo.guardar(inventarios); }
-        catch (Exception e) { throw new FachadaException("Error al guardar inventarios.dat", e); }
-    }
-
-    private void guardarProveedores() throws FachadaException {
-        try { proveedoresArchivo.guardar(proveedores); }
-        catch (Exception e) { throw new FachadaException("Error al guardar proveedores.dat", e); }
-    }
-
-    private void guardarUsuarios() throws FachadaException {
-        try { usuariosArchivo.guardar(usuarios); }
-        catch (Exception e) { throw new FachadaException("Error al guardar usuarios.dat", e); }
-    }
-
-    private void guardarVentas() throws FachadaException {
-        try { ventasArchivo.guardar(ventas); }
-        catch (Exception e) { throw new FachadaException("Error al guardar ventas.dat", e); }
-    }
-
-    private void guardarCompras() throws FachadaException {
-        try { comprasArchivo.guardar(compras); }
-        catch (Exception e) { throw new FachadaException("Error al guardar compras.dat", e); }
-    }
-
-    private void guardarFacturas() throws FachadaException {
-        try { facturasArchivo.guardar(facturas); }
-        catch (Exception e) { throw new FachadaException("Error al guardar facturas.dat", e); }
-    }
-
-    private void guardarRoles() throws FachadaException {
-        try { rolesArchivo.guardar(roles); }
-        catch (Exception e) { throw new FachadaException("Error al guardar roles.dat", e); }
-    }
-
-    private void guardarDetallesFactura() throws FachadaException {
-        try { detalleFacturaArchivo.guardar(detallesFactura); }
-        catch (Exception e) { throw new FachadaException("Error al guardar detallefactura.dat", e); }
+    /**
+     * Para metodos de la interfaz que NO declaran ninguna excepcion
+     * (consultas/listados). Si el DAO falla, se re-envuelve en una
+     * excepcion NO checked para no romper la firma heredada del diseño
+     * original en memoria.
+     */
+    private <T> T sinChequeo(Operacion<T> op) {
+        try {
+            return op.ejecutar();
+        } catch (PersistenciaException pe) {
+            throw new RuntimeException(pe.getMessage(), pe);
+        }
     }
 
     // ── Categorías ───────────────────────────────────────────────────────────
 
     @Override
     public void agregarCategoria(Categoria c) throws FachadaException {
-        for (Categoria cat : categorias)
-            if (cat.getCveCategoria().equalsIgnoreCase(c.getCveCategoria()))
-                throw new FachadaException("Categoría ya existe: " + c.getCveCategoria());
-        categorias.add(c);
-        guardarCategorias();
+        conCheckedVoid(() -> categoriasDAO.agregar(c));
     }
 
     @Override
     public Categoria buscarCategoria(String cve)
             throws CategoriaNoEncontradaException, FachadaException {
-        for (Categoria c : categorias)
-            if (c.getCveCategoria().equalsIgnoreCase(cve)) return c;
-        throw new CategoriaNoEncontradaException("Categoría no encontrada: " + cve);
+        try {
+            return categoriasDAO.buscar(cve);
+        } catch (PersistenciaException pe) {
+            throw new CategoriaNoEncontradaException(pe.getMessage());
+        }
     }
 
     @Override
     public ArrayList<Categoria> listarCategorias() throws FachadaException {
-        return new ArrayList<>(categorias);
+        return conChecked(categoriasDAO::obtenerTodas);
     }
 
     @Override
     public void actualizarCategoria(Categoria c) throws FachadaException {
-        for (int i = 0; i < categorias.size(); i++) {
-            if (categorias.get(i).getCveCategoria().equalsIgnoreCase(c.getCveCategoria())) {
-                categorias.set(i, c);
-                guardarCategorias();
-                return;
-            }
-        }
-        throw new FachadaException("Categoría no encontrada para actualizar: " + c.getCveCategoria());
+        conCheckedVoid(() -> categoriasDAO.actualizar(c));
     }
 
     @Override
     public void inactivarCategoria(String cve) throws FachadaException {
-        for (Categoria c : categorias) {
-            if (c.getCveCategoria().equalsIgnoreCase(cve)) {
-                c.setActivo(false);
-                guardarCategorias();
-                return;
-            }
-        }
-        throw new FachadaException("Categoría no encontrada para inactivar: " + cve);
+        conCheckedVoid(() -> categoriasDAO.inactivar(cve));
     }
 
     @Override
     public ArrayList<Categoria> listarCategoriasActivas() throws FachadaException {
-        ArrayList<Categoria> resultado = new ArrayList<>();
-        for (Categoria c : categorias)
-            if (c.isActivo()) resultado.add(c);
-        return resultado;
+        return conChecked(categoriasDAO::listarActivas);
     }
 
     // ── Productos (unificado) ────────────────────────────────────────────────
 
     @Override
     public void agregarProducto(Producto p) throws FachadaException {
-        for (Producto prod : productos)
-            if (prod.getCodigo().equalsIgnoreCase(p.getCodigo()))
-                throw new FachadaException("Producto ya existe: " + p.getCodigo());
-        productos.add(p);
-        guardarProductos();
+        conCheckedVoid(() -> productosDAO.agregar(p));
     }
 
     @Override
     public Producto buscarProducto(String codigo)
             throws ProductoNoEncontradoException, FachadaException {
-        for (Producto p : productos)
-            if (p.getCodigo().equalsIgnoreCase(codigo)) return p;
-        throw new ProductoNoEncontradoException("Producto no encontrado: " + codigo);
+        try {
+            return productosDAO.buscar(codigo);
+        } catch (PersistenciaException pe) {
+            throw new ProductoNoEncontradoException(pe.getMessage());
+        }
     }
 
     @Override
     public void actualizarProducto(Producto p) throws FachadaException {
-        for (int i = 0; i < productos.size(); i++) {
-            if (productos.get(i).getCodigo().equalsIgnoreCase(p.getCodigo())) {
-                productos.set(i, p);
-                guardarProductos();
-                return;
-            }
-        }
-        throw new FachadaException("Producto no encontrado para actualizar: " + p.getCodigo());
+        conCheckedVoid(() -> productosDAO.actualizar(p));
     }
 
     @Override
     public void inactivarProducto(String codigo) throws FachadaException {
-        for (Producto p : productos) {
-            if (p.getCodigo().equalsIgnoreCase(codigo)) {
-                p.setEstado(Producto.ESTADO_INACTIVO);
-                guardarProductos();
-                return;
-            }
-        }
-        throw new FachadaException("Producto no encontrado para inactivar: " + codigo);
+        conCheckedVoid(() -> productosDAO.inactivar(codigo));
     }
 
     @Override
     public ArrayList<Producto> listarProductosActivos() throws FachadaException {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if (p.isActivo()) resultado.add(p);
-        return resultado;
+        return conChecked(productosDAO::listarActivos);
     }
 
     @Override
     public ArrayList<Producto> listarProductos() throws FachadaException {
-        return new ArrayList<>(productos);
+        return conChecked(productosDAO::obtenerTodos);
     }
 
     @Override
     public ArrayList<Producto> listarProductosPorTipo(String tipo) {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if (p.getTipo().equalsIgnoreCase(tipo)) resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> p.getTipo().equalsIgnoreCase(tipo))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> listarVencidos() {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if ("Perecible".equals(p.getTipo()) && p.estaVencido()) resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> "Perecible".equals(p.getTipo()) && p.estaVencido())
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> listarProximosAVencer() {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if ("Perecible".equals(p.getTipo()) && p.estaProximoAVencer() && !p.estaVencido())
-                resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> "Perecible".equals(p.getTipo()) && p.estaProximoAVencer() && !p.estaVencido())
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> listarConDescuento() {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if ("No Perecible".equals(p.getTipo()) && p.getPesoKg() > 5.0) resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> "No Perecible".equals(p.getTipo()) && p.getPesoKg() > 5.0)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> listarProductosPorCategoria(String cve) {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if (p.getCategoria() != null &&
-                    p.getCategoria().getCveCategoria().equalsIgnoreCase(cve))
-                resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> p.getCategoria() != null &&
+                        p.getCategoria().getCveCategoria().equalsIgnoreCase(cve))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> listarProductosPorMarca(String marca) {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : productos)
-            if ("No Perecible".equals(p.getTipo()) &&
-                    p.getMarca().equalsIgnoreCase(marca)) resultado.add(p);
-        return resultado;
+        return sinChequeo(productosDAO::obtenerTodos).stream()
+                .filter(p -> "No Perecible".equals(p.getTipo()) && p.getMarca().equalsIgnoreCase(marca))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public ArrayList<Producto> buscarProductosPor(Predicate<Producto> condicion) {
-        return productos.stream()
-                .filter(condicion)
-                .collect(Collectors.toCollection(ArrayList::new));
+        return sinChequeo(() -> productosDAO.buscarPor(condicion));
     }
 
     @Override
@@ -322,24 +261,24 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public Map<String, List<Producto>> agruparProductosPorCategoria() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .filter(p -> p.getCategoria() != null)
                 .collect(Collectors.groupingBy(p -> p.getCategoria().getCveCategoria()));
     }
 
     @Override
     public ArrayList<Producto> listarCatalogo() {
-        return new ArrayList<>(productos);
+        return sinChequeo(productosDAO::obtenerTodos);
     }
 
     @Override
     public int conteoTotal() {
-        return productos.size();
+        return productosDAO.conteo();
     }
 
     @Override
     public double calcularPrecioPromedio() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .mapToDouble(Producto::calcularPrecioFinal)
                 .average()
                 .orElse(0.0);
@@ -347,14 +286,14 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public double calcularValorTotalInventario() {
-        return inventarios.stream()
+        return sinChequeo(inventariosDAO::obtenerTodos).stream()
                 .mapToDouble(inv -> inv.getProducto().calcularPrecioFinal() * inv.getCantidadDisponible())
                 .sum();
     }
 
     @Override
     public ArrayList<Producto> listarProductosOrdenadosPorPrecio() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .sorted(Comparator.comparingDouble(Producto::calcularPrecioFinal)
                         .thenComparing(Producto::getNombre))
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -362,13 +301,13 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public Map<Boolean, List<Producto>> particionarPorDescuento() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .collect(Collectors.partitioningBy(p -> p.calcularDescuento() > 0));
     }
 
     @Override
     public Map<String, Long> contarProductosPorCategoria() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .filter(p -> p.getCategoria() != null)
                 .collect(Collectors.groupingBy(
                         p -> p.getCategoria().getCveCategoria(),
@@ -377,20 +316,20 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public Optional<Producto> buscarMasCaro() {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .max(Comparator.comparingDouble(Producto::calcularPrecioFinal));
     }
 
     @Override
     public <R> ArrayList<R> extraerCampo(Function<Producto, R> extractor) {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .map(extractor)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
     @Override
     public double calcularTotalDescuentos(ReglaDescuento regla) {
-        return productos.stream()
+        return sinChequeo(productosDAO::obtenerTodos).stream()
                 .mapToDouble(regla::aplicar)
                 .sum();
     }
@@ -399,100 +338,71 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void agregarInventario(Inventario inv) throws FachadaException {
-        for (Inventario i : inventarios)
-            if (i.getProducto() != null &&
-                    i.getProducto().getCodigo().equalsIgnoreCase(
-                            inv.getProducto().getCodigo()))
-                throw new FachadaException("Ya existe inventario para: " +
-                        inv.getProducto().getCodigo());
-        inv.setIdInventario(GeneradorId.siguienteId(inventarios, Inventario::getIdInventario));
-        inventarios.add(inv);
-        guardarInventarios();
+        if (inv.getProducto() != null && existeInventarioParaProducto(inv.getProducto().getCodigo())) {
+            throw new FachadaException("Ya existe inventario para: " + inv.getProducto().getCodigo());
+        }
+        conCheckedVoid(() -> inventariosDAO.agregar(inv));
+    }
+
+    private boolean existeInventarioParaProducto(String codigoProducto) {
+        try {
+            inventariosDAO.buscarPorProducto(codigoProducto);
+            return true;
+        } catch (PersistenciaException pe) {
+            return false;
+        }
     }
 
     @Override
     public Inventario buscarInventario(int id) throws FachadaException {
-        for (Inventario inv : inventarios)
-            if (inv.getIdInventario() == id) return inv;
-        throw new FachadaException("Inventario no encontrado: id=" + id);
+        return conChecked(() -> inventariosDAO.buscar(id));
     }
 
     @Override
     public void actualizarInventario(Inventario inv) throws FachadaException {
-        for (int i = 0; i < inventarios.size(); i++) {
-            if (inventarios.get(i).getIdInventario() == inv.getIdInventario()) {
-                inventarios.set(i, inv);
-                guardarInventarios();
-                return;
-            }
-        }
-        throw new FachadaException("Inventario no encontrado para actualizar: id=" + inv.getIdInventario());
+        conCheckedVoid(() -> inventariosDAO.actualizar(inv));
     }
 
     @Override
     public void inactivarInventario(int id) throws FachadaException {
-        for (Inventario inv : inventarios) {
-            if (inv.getIdInventario() == id) {
-                inv.setActivo(false);
-                guardarInventarios();
-                return;
-            }
-        }
-        throw new FachadaException("Inventario no encontrado para inactivar: id=" + id);
+        conCheckedVoid(() -> inventariosDAO.inactivar(id));
     }
 
     @Override
     public void retirarStock(String codigoProducto, int cantidad)
             throws StockInsuficienteException, FachadaException {
-        for (Inventario inv : inventarios) {
-            if (inv.getProducto() != null &&
-                    inv.getProducto().getCodigo().equalsIgnoreCase(codigoProducto)) {
-                inv.retirar(cantidad);
-                guardarInventarios();
-                return;
-            }
+        Inventario inv;
+        try {
+            inv = inventariosDAO.buscarPorProducto(codigoProducto);
+        } catch (PersistenciaException pe) {
+            throw new FachadaException("Inventario no encontrado para: " + codigoProducto, pe);
         }
-        throw new FachadaException("Inventario no encontrado para: " + codigoProducto);
+        inv.retirar(cantidad);
+        conCheckedVoid(() -> inventariosDAO.actualizar(inv));
     }
 
     @Override
     public ArrayList<Inventario> listarInventarios() {
-        return new ArrayList<>(inventarios);
+        return sinChequeo(inventariosDAO::obtenerTodos);
     }
 
     @Override
     public ArrayList<Inventario> listarInventariosActivos() {
-        ArrayList<Inventario> resultado = new ArrayList<>();
-        for (Inventario inv : inventarios)
-            if (inv.isActivo()) resultado.add(inv);
-        return resultado;
+        return sinChequeo(inventariosDAO::listarActivos);
     }
 
     @Override
     public ArrayList<Inventario> listarInventariosConAlerta() {
-        ArrayList<Inventario> resultado = new ArrayList<>();
-        for (Inventario inv : inventarios)
-            if (inv.requiereAlerta()) resultado.add(inv);
-        return resultado;
+        return sinChequeo(inventariosDAO::listarConAlerta);
     }
 
-    /**
-     * Búsqueda avanzada de inventarios: recibe cualquier {@link Predicate}
-     * y filtra la lista completa de inventarios con él.
-     * Análoga a {@link #buscarProductosPor}.
-     */
     @Override
     public ArrayList<Inventario> buscarInventariosPor(Predicate<Inventario> condicion) {
-        return inventarios.stream()
+        return sinChequeo(inventariosDAO::obtenerTodos).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /**
-     * Búsqueda avanzada de inventarios: recibe varios parámetros opcionales
-     * a la vez (producto, categoría, rango de stock, rango de fechas, solo
-     * con alerta, solo activos) empaquetados en {@link CriteriosInventario}.
-     */
     @Override
     public ArrayList<Inventario> buscarInventarios(CriteriosInventario criterios) {
         return buscarInventariosPor(criterios.aPredicate());
@@ -502,135 +412,86 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void registrarVenta(Venta v) throws FachadaException {
-        v.setIdVenta(GeneradorId.siguienteId(ventas, Venta::getIdVenta));
-        ventas.add(v);
+        conCheckedVoid(() -> ventasDAO.agregar(v));
         v.crear();
-        guardarVentas();
     }
 
     @Override
     public Venta buscarVenta(int idVenta) throws FachadaException {
-        for (Venta v : ventas)
-            if (v.getIdVenta() == idVenta) return v;
-        throw new FachadaException("Venta no encontrada: id=" + idVenta);
+        return conChecked(() -> ventasDAO.buscar(idVenta));
     }
 
     @Override
     public void actualizarVenta(Venta v) throws FachadaException {
-        for (int i = 0; i < ventas.size(); i++) {
-            if (ventas.get(i).getIdVenta() == v.getIdVenta()) {
-                ventas.set(i, v);
-                guardarVentas();
-                return;
-            }
-        }
-        throw new FachadaException("Venta no encontrada para actualizar: id=" + v.getIdVenta());
+        conCheckedVoid(() -> ventasDAO.actualizar(v));
     }
 
     @Override
     public void inactivarVenta(int idVenta) throws FachadaException {
-        Venta encontrada = buscarVenta(idVenta);
-        encontrada.anular();
-        guardarVentas();
+        conCheckedVoid(() -> ventasDAO.inactivar(idVenta));
     }
 
     @Override
-    public ArrayList<Venta> listarVentas() { return new ArrayList<>(ventas); }
+    public ArrayList<Venta> listarVentas() {
+        return sinChequeo(ventasDAO::obtenerTodos);
+    }
 
     @Override
     public ArrayList<Venta> listarVentasActivas() {
-        ArrayList<Venta> resultado = new ArrayList<>();
-        for (Venta v : ventas)
-            if (v.getEstado() == Venta.Estado.ACTIVA) resultado.add(v);
-        return resultado;
+        return sinChequeo(ventasDAO::listarActivas);
     }
 
     @Override
     public ArrayList<Venta> listarVentasAnuladas() {
-        ArrayList<Venta> resultado = new ArrayList<>();
-        for (Venta v : ventas)
-            if (v.getEstado() == Venta.Estado.ANULADA) resultado.add(v);
-        return resultado;
+        return sinChequeo(ventasDAO::listarAnuladas);
     }
 
     // ── Facturas ─────────────────────────────────────────────────────────────
 
     @Override
     public void emitirFactura(Factura f) throws FachadaException {
-        facturas.add(f);
+        conCheckedVoid(() -> facturasDAO.agregar(f));
         f.crear();
-        guardarFacturas();
-
-        for (edu.uce.programacion2.tienda.negocio.DetalleFactura d : f.getDetalles()) {
-            detallesFactura.add(new edu.uce.programacion2.tienda.persistencia.DetalleFactura.Registro(
-                    f.getIdFactura(), d));
-        }
-        guardarDetallesFactura();
     }
 
-    /** Retorna todos los registros de detalle de factura (todas las facturas). */
-    public ArrayList<edu.uce.programacion2.tienda.persistencia.DetalleFactura.Registro> listarDetallesFactura() {
-        return new ArrayList<>(detallesFactura);
-    }
-
-    /** Retorna los detalles pertenecientes a una factura específica. */
+    /** Retorna las líneas fiscales pertenecientes a una factura específica. */
     public ArrayList<edu.uce.programacion2.tienda.negocio.DetalleFactura> listarDetallesPorFactura(int idFactura) {
-        ArrayList<edu.uce.programacion2.tienda.negocio.DetalleFactura> resultado = new ArrayList<>();
-        for (edu.uce.programacion2.tienda.persistencia.DetalleFactura.Registro r : detallesFactura)
-            if (r.getIdFactura() == idFactura) resultado.add(r.getDetalle());
-        return resultado;
+        return sinChequeo(() -> detallesFacturaDAO.obtenerPorIdFactura(idFactura));
     }
 
     @Override
     public Factura buscarFactura(String numero) throws FachadaException {
-        for (Factura f : facturas)
-            if (f.getNumeroFactura().equalsIgnoreCase(numero)) return f;
-        throw new FachadaException("Factura no encontrada: " + numero);
+        return conChecked(() -> facturasDAO.buscar(numero));
     }
 
     @Override
-    public ArrayList<Factura> listarFacturas() { return new ArrayList<>(facturas); }
+    public ArrayList<Factura> listarFacturas() {
+        return sinChequeo(facturasDAO::obtenerTodos);
+    }
 
     @Override
     public ArrayList<Factura> listarFacturasEmitidas() {
-        ArrayList<Factura> resultado = new ArrayList<>();
-        for (Factura f : facturas)
-            if (f.getEstado() == Factura.EstadoFactura.EMITIDA) resultado.add(f);
-        return resultado;
+        return sinChequeo(facturasDAO::listarEmitidas);
     }
 
     @Override
     public ArrayList<Factura> listarFacturasAnuladas() {
-        ArrayList<Factura> resultado = new ArrayList<>();
-        for (Factura f : facturas)
-            if (f.getEstado() == Factura.EstadoFactura.ANULADA) resultado.add(f);
-        return resultado;
+        return sinChequeo(facturasDAO::listarAnuladas);
     }
 
-    /**
-     * Búsqueda genérica de facturas por cualquier condición funcional.
-     * Análoga a {@link #buscarProductosPor}.
-     */
     @Override
     public ArrayList<Factura> buscarFacturasPor(Predicate<Factura> condicion) {
-        return facturas.stream()
-                .filter(condicion)
-                .collect(Collectors.toCollection(ArrayList::new));
+        return sinChequeo(() -> facturasDAO.buscarPor(condicion));
     }
 
-    /**
-     * Búsqueda avanzada de facturas: recibe varios parámetros opcionales a la
-     * vez (rango de fechas, rango de total, cliente, número de factura,
-     * IVA especial, estado) empaquetados en {@link CriteriosFactura}.
-     */
     @Override
     public ArrayList<Factura> buscarFacturas(CriteriosFactura criterios) {
         return buscarFacturasPor(criterios.aPredicate());
     }
 
     /**
-     * Búsqueda avanzada de ventas (deprecada, usar buscarFacturas con CriteriosVenta).
-     * @deprecated Use {@link #buscarFacturas(CriteriosVenta)} en su lugar.
+     * Búsqueda avanzada de ventas (deprecada, usar buscarFacturas con CriteriosFactura).
+     * @deprecated Use {@link #buscarFacturas(CriteriosFactura)} en su lugar.
      */
     @Override
     @Deprecated
@@ -642,54 +503,36 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void agregarProveedor(Proveedor p) throws FachadaException {
-        p.setIdProveedor(GeneradorId.siguienteId(proveedores, Proveedor::getIdProveedor));
-        proveedores.add(p);
-        p.crear();
-        guardarProveedores();
+        conCheckedVoid(() -> proveedoresDAO.agregar(p));
     }
 
     @Override
     public Proveedor buscarProveedor(int id) throws FachadaException {
-        for (Proveedor p : proveedores)
-            if (p.getIdProveedor() == id) return p;
-        throw new FachadaException("Proveedor no encontrado: id=" + id);
+        return conChecked(() -> proveedoresDAO.buscar(id));
     }
 
     @Override
     public Proveedor buscarProveedorPorRuc(String ruc) throws FachadaException {
-        for (Proveedor p : proveedores)
-            if (p.getRuc().equalsIgnoreCase(ruc)) return p;
-        throw new FachadaException("Proveedor no encontrado con RUC: " + ruc);
+        return conChecked(() -> proveedoresDAO.buscarPorRuc(ruc));
     }
 
     @Override
-    public ArrayList<Proveedor> listarProveedores() { return new ArrayList<>(proveedores); }
+    public ArrayList<Proveedor> listarProveedores() {
+        return sinChequeo(proveedoresDAO::obtenerTodos);
+    }
 
     @Override
     public ArrayList<Proveedor> listarProveedoresActivos() {
-        ArrayList<Proveedor> resultado = new ArrayList<>();
-        for (Proveedor p : proveedores)
-            if (p.isActivo()) resultado.add(p);
-        return resultado;
+        return sinChequeo(proveedoresDAO::listarActivos);
     }
 
-    /**
-     * Búsqueda avanzada de proveedores: recibe cualquier {@link Predicate}
-     * y filtra la lista completa de proveedores con él.
-     * Análoga a {@link #buscarProductosPor}.
-     */
     @Override
     public ArrayList<Proveedor> buscarProveedoresPor(Predicate<Proveedor> condicion) {
-        return proveedores.stream()
+        return sinChequeo(proveedoresDAO::obtenerTodos).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /**
-     * Búsqueda avanzada de proveedores: recibe varios parámetros opcionales
-     * a la vez (nombre, RUC, teléfono, email, dirección, solo activos)
-     * empaquetados en {@link CriteriosProveedor}.
-     */
     @Override
     public ArrayList<Proveedor> buscarProveedores(CriteriosProveedor criterios) {
         return buscarProveedoresPor(criterios.aPredicate());
@@ -697,107 +540,72 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void actualizarProveedor(Proveedor p) throws FachadaException {
-        for (int i = 0; i < proveedores.size(); i++) {
-            if (proveedores.get(i).getIdProveedor() == p.getIdProveedor()) {
-                proveedores.set(i, p);
-                guardarProveedores();
-                return;
-            }
-        }
-        throw new FachadaException("Proveedor no encontrado para actualizar: id=" + p.getIdProveedor());
+        conCheckedVoid(() -> proveedoresDAO.actualizar(p));
     }
 
     @Override
     public void inactivarProveedor(int id) throws FachadaException {
-        for (Proveedor p : proveedores) {
-            if (p.getIdProveedor() == id) {
-                p.setActivo(false);
-                guardarProveedores();
-                return;
-            }
-        }
-        throw new FachadaException("Proveedor no encontrado para inactivar: id=" + id);
+        conCheckedVoid(() -> proveedoresDAO.inactivar(id));
     }
 
     // ── Compras ──────────────────────────────────────────────────────────────
 
     @Override
     public void registrarCompra(Compra c) throws FachadaException {
-        c.setIdCompra(GeneradorId.siguienteId(compras, Compra::getIdCompra));
-        compras.add(c);
+        conCheckedVoid(() -> comprasDAO.agregar(c));
         c.crear();
-        guardarCompras();
     }
 
     @Override
     public void recibirCompra(Compra c) throws FachadaException {
         c.recibirCompra();
         for (DetalleCompra dc : c.getDetalles()) {
-            for (Inventario inv : inventarios) {
-                if (inv.getProducto() != null &&
-                        inv.getProducto().getCodigo().equalsIgnoreCase(
-                                dc.getProducto().getCodigo())) {
-                    inv.agregar(dc.getCantidad());
-                }
+            if (dc.getProducto() == null) continue;
+            try {
+                Inventario inv = inventariosDAO.buscarPorProducto(dc.getProducto().getCodigo());
+                inv.agregar(dc.getCantidad());
+                inventariosDAO.actualizar(inv);
+            } catch (PersistenciaException pe) {
+                throw new FachadaException(
+                        "No se pudo actualizar el inventario de " + dc.getProducto().getCodigo(), pe);
             }
         }
-        guardarInventarios();
-        guardarCompras();
+        conCheckedVoid(() -> comprasDAO.actualizar(c));
     }
 
     @Override
     public void actualizarCompra(Compra c) throws FachadaException {
-        for (int i = 0; i < compras.size(); i++) {
-            if (compras.get(i).getIdCompra() == c.getIdCompra()) {
-                compras.set(i, c);
-                guardarCompras();
-                return;
-            }
-        }
-        throw new FachadaException("Compra no encontrada para actualizar: id=" + c.getIdCompra());
+        conCheckedVoid(() -> comprasDAO.actualizar(c));
     }
 
     @Override
     public void inactivarCompra(int idCompra) throws FachadaException {
-        Compra encontrada = null;
-        for (Compra c : compras)
-            if (c.getIdCompra() == idCompra) { encontrada = c; break; }
-        if (encontrada == null)
-            throw new FachadaException("Compra no encontrada para inactivar: id=" + idCompra);
-        encontrada.anular();
-        guardarCompras();
+        conCheckedVoid(() -> comprasDAO.inactivar(idCompra));
     }
 
     @Override
-    public ArrayList<Compra> listarCompras() { return new ArrayList<>(compras); }
+    public ArrayList<Compra> listarCompras() {
+        return sinChequeo(comprasDAO::obtenerTodos);
+    }
 
     @Override
     public ArrayList<Compra> listarComprasActivas() {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : compras)
-            if (c.getEstado() != Compra.Estado.ANULADA) resultado.add(c);
-        return resultado;
+        return sinChequeo(comprasDAO::listarActivas);
     }
 
     @Override
     public ArrayList<Compra> listarComprasPendientes() {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : compras)
-            if (c.getEstado() == Compra.Estado.PENDIENTE) resultado.add(c);
-        return resultado;
+        return sinChequeo(comprasDAO::listarPendientes);
     }
 
     @Override
     public ArrayList<Compra> listarComprasRecibidas() {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : compras)
-            if (c.getEstado() == Compra.Estado.RECIBIDA) resultado.add(c);
-        return resultado;
+        return sinChequeo(comprasDAO::listarRecibidas);
     }
 
     @Override
     public ArrayList<Compra> buscarComprasPor(Predicate<Compra> condicion) {
-        return compras.stream()
+        return sinChequeo(comprasDAO::obtenerTodos).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
@@ -811,72 +619,53 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void agregarUsuario(Usuario u) throws FachadaException {
-        for (Usuario existente : usuarios)
-            if (existente.getEmail().equalsIgnoreCase(u.getEmail()))
-                throw new FachadaException("Ya existe un usuario con el email: " + u.getEmail());
-        u.setIdUsuario(GeneradorId.siguienteId(usuarios, Usuario::getIdUsuario));
-        usuarios.add(u);
-        guardarUsuarios();
+        if (existeUsuarioConEmail(u.getEmail())) {
+            throw new FachadaException("Ya existe un usuario con el email: " + u.getEmail());
+        }
+        conCheckedVoid(() -> usuariosDAO.agregar(u));
+    }
+
+    private boolean existeUsuarioConEmail(String email) {
+        try {
+            usuariosDAO.buscarPorEmail(email);
+            return true;
+        } catch (PersistenciaException pe) {
+            return false;
+        }
     }
 
     @Override
     public void actualizarUsuario(Usuario u) throws FachadaException {
-        for (int i = 0; i < usuarios.size(); i++) {
-            if (usuarios.get(i).getIdUsuario() == u.getIdUsuario()) {
-                usuarios.set(i, u);
-                guardarUsuarios();
-                return;
-            }
-        }
-        throw new FachadaException("Usuario no encontrado para actualizar: id=" + u.getIdUsuario());
+        conCheckedVoid(() -> usuariosDAO.actualizar(u));
     }
 
     @Override
     public void inactivarUsuario(int id) throws FachadaException {
-        for (Usuario u : usuarios) {
-            if (u.getIdUsuario() == id) {
-                u.setActivo(false);
-                guardarUsuarios();
-                return;
-            }
-        }
-        throw new FachadaException("Usuario no encontrado para inactivar: id=" + id);
+        conCheckedVoid(() -> usuariosDAO.inactivar(id));
     }
 
     @Override
     public Usuario buscarUsuario(int idUsuario) throws FachadaException {
-        for (Usuario u : usuarios)
-            if (u.getIdUsuario() == idUsuario) return u;
-        throw new FachadaException("Usuario no encontrado: id=" + idUsuario);
+        return conChecked(() -> usuariosDAO.buscar(idUsuario));
     }
 
     @Override
     public Usuario buscarUsuarioPorEmail(String email) throws FachadaException {
-        for (Usuario u : usuarios)
-            if (u.getEmail().equalsIgnoreCase(email)) return u;
-        throw new FachadaException("Usuario no encontrado con email: " + email);
+        return conChecked(() -> usuariosDAO.buscarPorEmail(email));
     }
 
     @Override
-    public ArrayList<Usuario> listarUsuarios() { return new ArrayList<>(usuarios); }
+    public ArrayList<Usuario> listarUsuarios() {
+        return sinChequeo(usuariosDAO::obtenerTodos);
+    }
 
-    /**
-     * Búsqueda avanzada de usuarios: recibe cualquier {@link Predicate}
-     * y filtra la lista completa de usuarios con él.
-     * Análoga a {@link #buscarProductosPor}.
-     */
     @Override
     public ArrayList<Usuario> buscarUsuariosPor(Predicate<Usuario> condicion) {
-        return usuarios.stream()
+        return sinChequeo(usuariosDAO::obtenerTodos).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /**
-     * Búsqueda avanzada de usuarios: recibe varios parámetros opcionales
-     * a la vez (nombre/email parcial, rol, solo activos) empaquetados en
-     * {@link CriteriosUsuario}.
-     */
     @Override
     public ArrayList<Usuario> buscarUsuarios(CriteriosUsuario criterios) {
         return buscarUsuariosPor(criterios.aPredicate());
@@ -884,18 +673,12 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public ArrayList<Usuario> listarUsuariosActivos() {
-        ArrayList<Usuario> resultado = new ArrayList<>();
-        for (Usuario u : usuarios)
-            if (u.isActivo()) resultado.add(u);
-        return resultado;
+        return sinChequeo(usuariosDAO::listarActivos);
     }
 
     @Override
     public ArrayList<Usuario> listarUsuariosPorPermiso(String permiso) {
-        ArrayList<Usuario> resultado = new ArrayList<>();
-        for (Usuario u : usuarios)
-            if (u.getPermiso().equalsIgnoreCase(permiso)) resultado.add(u);
-        return resultado;
+        return sinChequeo(() -> usuariosDAO.listarPorPermiso(permiso));
     }
 
     @Override
@@ -918,55 +701,43 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void agregarRol(Rol r) throws FachadaException {
-        for (Rol existente : roles)
-            if (existente.getNombreCargo().equalsIgnoreCase(r.getNombreCargo()))
-                throw new FachadaException("Ya existe un rol con el cargo: " + r.getNombreCargo());
-        r.setIdRol(GeneradorId.siguienteId(roles, Rol::getIdRol));
-        roles.add(r);
-        guardarRoles();
+        if (existeRolConNombre(r.getNombreCargo())) {
+            throw new FachadaException("Ya existe un rol con el cargo: " + r.getNombreCargo());
+        }
+        conCheckedVoid(() -> rolesDAO.agregar(r));
+    }
+
+    private boolean existeRolConNombre(String nombreCargo) {
+        try {
+            rolesDAO.buscarPorNombre(nombreCargo);
+            return true;
+        } catch (PersistenciaException pe) {
+            return false;
+        }
     }
 
     @Override
     public Rol buscarRol(int idRol) throws FachadaException {
-        for (Rol r : roles)
-            if (r.getIdRol() == idRol) return r;
-        throw new FachadaException("Rol no encontrado. Id: " + idRol);
+        return conChecked(() -> rolesDAO.buscar(idRol));
     }
 
     @Override
     public void actualizarRol(Rol r) throws FachadaException {
-        for (int i = 0; i < roles.size(); i++) {
-            if (roles.get(i).getIdRol() == r.getIdRol()) {
-                roles.set(i, r);
-                guardarRoles();
-                return;
-            }
-        }
-        throw new FachadaException("Rol no encontrado para actualizar. Id: " + r.getIdRol());
+        conCheckedVoid(() -> rolesDAO.actualizar(r));
     }
 
     @Override
     public void inactivarRol(int idRol) throws FachadaException {
-        for (Rol r : roles) {
-            if (r.getIdRol() == idRol) {
-                r.setActivo(false);
-                guardarRoles();
-                return;
-            }
-        }
-        throw new FachadaException("Rol no encontrado para inactivar. Id: " + idRol);
+        conCheckedVoid(() -> rolesDAO.inactivar(idRol));
     }
 
     @Override
     public ArrayList<Rol> listarRoles() {
-        return new ArrayList<>(roles);
+        return sinChequeo(rolesDAO::obtenerTodos);
     }
 
     @Override
     public ArrayList<Rol> listarRolesActivos() {
-        ArrayList<Rol> resultado = new ArrayList<>();
-        for (Rol r : roles)
-            if (r.isActivo()) resultado.add(r);
-        return resultado;
+        return sinChequeo(rolesDAO::listarActivos);
     }
 }
