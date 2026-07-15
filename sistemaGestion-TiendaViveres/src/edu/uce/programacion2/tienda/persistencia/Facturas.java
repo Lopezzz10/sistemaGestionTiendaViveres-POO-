@@ -4,7 +4,6 @@ import edu.uce.programacion2.tienda.negocio.Cajero;
 import edu.uce.programacion2.tienda.negocio.Cliente;
 import edu.uce.programacion2.tienda.negocio.DetalleFactura;
 import edu.uce.programacion2.tienda.negocio.Factura;
-import edu.uce.programacion2.tienda.negocio.Usuario;
 import edu.uce.programacion2.tienda.negocio.Venta;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
@@ -26,9 +25,9 @@ import java.util.function.Predicate;
  * Compras/DetallesCompra.
  *
  * La venta, el cliente y el cajero se guardan como FK (su id) y se
- * resuelven al leer usando {@link Ventas} y {@link Usuarios}
- * respectivamente (si se proveen esos DAOs); si no se proveen, o el id no
- * existe, quedan null.
+ * resuelven al leer usando {@link Ventas}, {@link Clientes} y
+ * {@link Cajeros} respectivamente (si se proveen esos DAOs); si no se
+ * proveen, o el id no existe, quedan null.
  *
  * subtotal, montoIva y total NO se persisten: Factura ya los recalcula
  * siempre a partir de sus detalles (calcularMontos()), igual que
@@ -57,26 +56,28 @@ public class Facturas extends AccesoAleatorio {
 
     private DetallesFactura detallesFacturaDAO;
     private Ventas ventasDAO;
-    private Usuarios usuariosDAO;
+    private Clientes clientesDAO;
+    private Cajeros cajerosDAO;
 
     public Facturas(String nomArchivo, DetallesFactura detallesFacturaDAO,
-                    Ventas ventasDAO, Usuarios usuariosDAO) {
+                    Ventas ventasDAO, Clientes clientesDAO, Cajeros cajerosDAO) {
         super(nomArchivo, TAM_REGISTRO);
         this.detallesFacturaDAO = detallesFacturaDAO;
         this.ventasDAO = ventasDAO;
-        this.usuariosDAO = usuariosDAO;
+        this.clientesDAO = clientesDAO;
+        this.cajerosDAO = cajerosDAO;
     }
 
     public Facturas(String nomArchivo, DetallesFactura detallesFacturaDAO) {
-        this(nomArchivo, detallesFacturaDAO, null, null);
+        this(nomArchivo, detallesFacturaDAO, null, null, null);
     }
 
     public Facturas(String nomArchivo) {
-        this(nomArchivo, null, null, null);
+        this(nomArchivo, null, null, null, null);
     }
 
     public Facturas() {
-        this("facturas.dat", null, null, null);
+        this("facturas.dat", null, null, null, null);
     }
 
     public void setDetallesFacturaDAO(DetallesFactura detallesFacturaDAO) {
@@ -87,8 +88,12 @@ public class Facturas extends AccesoAleatorio {
         this.ventasDAO = ventasDAO;
     }
 
-    public void setUsuariosDAO(Usuarios usuariosDAO) {
-        this.usuariosDAO = usuariosDAO;
+    public void setClientesDAO(Clientes clientesDAO) {
+        this.clientesDAO = clientesDAO;
+    }
+
+    public void setCajerosDAO(Cajeros cajerosDAO) {
+        this.cajerosDAO = cajerosDAO;
     }
 
     // Lee solo el encabezado de una factura (sin lineas fiscales propias:
@@ -120,20 +125,18 @@ public class Facturas extends AccesoAleatorio {
     }
 
     private Cliente resolverCliente(int idCliente) {
-        if (idCliente <= 0 || usuariosDAO == null) return null;
+        if (idCliente <= 0 || clientesDAO == null) return null;
         try {
-            Usuario u = usuariosDAO.buscar(idCliente);
-            return (u instanceof Cliente) ? (Cliente) u : null;
+            return clientesDAO.buscar(idCliente);
         } catch (PersistenciaException pe) {
             return null;
         }
     }
 
     private Cajero resolverCajero(int idCajero) {
-        if (idCajero <= 0 || usuariosDAO == null) return null;
+        if (idCajero <= 0 || cajerosDAO == null) return null;
         try {
-            Usuario u = usuariosDAO.buscar(idCajero);
-            return (u instanceof Cajero) ? (Cajero) u : null;
+            return cajerosDAO.buscar(idCajero);
         } catch (PersistenciaException pe) {
             return null;
         }

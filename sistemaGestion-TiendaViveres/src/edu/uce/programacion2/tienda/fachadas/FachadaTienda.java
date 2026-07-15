@@ -55,7 +55,9 @@ public class FachadaTienda implements IFachadaTienda {
     private final Facturas    facturas;
     private final Proveedores proveedores;
     private final Compras     compras;
-    private final Usuarios    usuarios;
+    private final Administradores administradores;
+    private final Cajeros         cajeros;
+    private final Clientes        clientes;
     private final Roles       roles;
 
     public FachadaTienda() {
@@ -66,7 +68,9 @@ public class FachadaTienda implements IFachadaTienda {
         this.facturas     = new Facturas();
         this.proveedores  = new Proveedores();
         this.compras      = new Compras();
-        this.usuarios     = new Usuarios();
+        this.administradores = new Administradores();
+        this.cajeros          = new Cajeros();
+        this.clientes         = new Clientes();
         this.roles        = new Roles();
     }
 
@@ -550,21 +554,83 @@ public class FachadaTienda implements IFachadaTienda {
     }
 
     // ── Usuarios ──────────────────────────────────────────────────────────
+    //
+    // Igual que en FachadaArchivos: no hay una clase "Usuarios" coordinadora.
+    // Administrador, Cajero y Cliente viven cada uno en su propio DAO, y
+    // esta fachada decide -- via instanceof -- a cual delegar cada
+    // operacion. El id sigue siendo unico en todo el sistema (ver
+    // #siguienteIdUsuario).
 
     public void agregarUsuario(Usuario u) throws FachadaException {
-        conCheckedVoid(() -> usuarios.agregar(u));
+        conCheckedVoid(() -> agregarUsuarioInterno(u));
+    }
+
+    private void agregarUsuarioInterno(Usuario u) throws PersistenciaException {
+        int nuevoId = siguienteIdUsuario();
+        if (u instanceof Administrador) {
+            administradores.agregar((Administrador) u, nuevoId);
+        } else if (u instanceof Cajero) {
+            cajeros.agregar((Cajero) u, nuevoId);
+        } else if (u instanceof Cliente) {
+            clientes.agregar((Cliente) u, nuevoId);
+        } else {
+            throw new PersistenciaException("Tipo de usuario desconocido: " + u.getClass().getSimpleName());
+        }
+    }
+
+    private int siguienteIdUsuario() throws PersistenciaException {
+        int maxAdmin   = administradores.maxId();
+        int maxCajero  = cajeros.maxId();
+        int maxCliente = clientes.maxId();
+        return Math.max(maxAdmin, Math.max(maxCajero, maxCliente)) + 1;
     }
 
     public Usuario buscarUsuario(int idUsuario) throws FachadaException {
-        return conChecked(() -> usuarios.buscar(idUsuario));
+        return conChecked(() -> buscarUsuarioInterno(idUsuario));
+    }
+
+    // Busca en los tres archivos (el id es unico entre los tres, asi que
+    // a lo sumo uno lo tiene).
+    private Usuario buscarUsuarioInterno(int idUsuario) throws PersistenciaException {
+        try {
+            return administradores.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return cajeros.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return clientes.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        throw new PersistenciaException("Usuario no encontrado: id=" + idUsuario);
     }
 
     public Usuario buscarUsuarioPorEmail(String email) throws FachadaException {
-        return conChecked(() -> usuarios.buscarPorEmail(email));
+        return conChecked(() -> buscarUsuarioPorEmailInterno(email));
+    }
+
+    private Usuario buscarUsuarioPorEmailInterno(String email) throws PersistenciaException {
+        try {
+            return administradores.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return cajeros.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return clientes.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        throw new PersistenciaException("Usuario no encontrado con email: " + email);
     }
 
     public ArrayList<Usuario> listarUsuarios() {
-        return sinChequeo(usuarios::obtenerTodos);
+        return sinChequeo(this::obtenerTodosLosUsuarios);
+    }
+
+    private ArrayList<Usuario> obtenerTodosLosUsuarios() throws PersistenciaException {
+        ArrayList<Usuario> resultado = new ArrayList<>();
+        resultado.addAll(administradores.obtenerTodos());
+        resultado.addAll(cajeros.obtenerTodos());
+        resultado.addAll(clientes.obtenerTodos());
+        return resultado;
     }
 
     /**
@@ -574,7 +640,7 @@ public class FachadaTienda implements IFachadaTienda {
      */
     @Override
     public ArrayList<Usuario> buscarUsuariosPor(Predicate<Usuario> condicion) {
-        return sinChequeo(usuarios::obtenerTodos).stream()
+        return sinChequeo(this::obtenerTodosLosUsuarios).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
@@ -590,20 +656,45 @@ public class FachadaTienda implements IFachadaTienda {
     }
 
     public void actualizarUsuario(Usuario u) throws FachadaException {
-        conCheckedVoid(() -> usuarios.actualizar(u));
+        conCheckedVoid(() -> {
+            if (u instanceof Administrador) {
+                administradores.actualizar((Administrador) u);
+            } else if (u instanceof Cajero) {
+                cajeros.actualizar((Cajero) u);
+            } else if (u instanceof Cliente) {
+                clientes.actualizar((Cliente) u);
+            } else {
+                throw new PersistenciaException("Tipo de usuario desconocido: " + u.getClass().getSimpleName());
+            }
+        });
     }
 
     public void inactivarUsuario(int id) throws FachadaException {
-        conCheckedVoid(() -> usuarios.inactivar(id));
+        conCheckedVoid(() -> {
+            Usuario u = buscarUsuarioInterno(id);
+            if (u instanceof Administrador) {
+                administradores.inactivar(id);
+            } else if (u instanceof Cajero) {
+                cajeros.inactivar(id);
+            } else {
+                clientes.inactivar(id);
+            }
+        });
     }
 
     @Override
     public ArrayList<Usuario> listarUsuariosActivos() {
-        return sinChequeo(usuarios::listarActivos);
+        return sinChequeo(() -> {
+            ArrayList<Usuario> resultado = new ArrayList<>();
+            resultado.addAll(administradores.listarActivos());
+            resultado.addAll(cajeros.listarActivos());
+            resultado.addAll(clientes.listarActivos());
+            return resultado;
+        });
     }
 
     public ArrayList<Usuario> listarUsuariosPorPermiso(String permiso) {
-        return sinChequeo(() -> usuarios.listarPorPermiso(permiso));
+        return buscarUsuariosPor(u -> u.getPermiso().equalsIgnoreCase(permiso));
     }
 
     @Override

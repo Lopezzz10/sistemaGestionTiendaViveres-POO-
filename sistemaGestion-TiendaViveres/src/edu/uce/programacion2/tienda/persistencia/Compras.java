@@ -4,7 +4,6 @@ import edu.uce.programacion2.tienda.negocio.Cliente;
 import edu.uce.programacion2.tienda.negocio.Compra;
 import edu.uce.programacion2.tienda.negocio.DetalleCompra;
 import edu.uce.programacion2.tienda.negocio.Proveedor;
-import edu.uce.programacion2.tienda.negocio.Usuario;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 
@@ -25,7 +24,7 @@ import java.util.Date;
  * depende de cuantos productos se hayan adquirido.
  *
  * El proveedor y el cliente se guardan como FK (su id), y se resuelven al
- * leer usando {@link Proveedores} y {@link Usuarios} respectivamente (si
+ * leer usando {@link Proveedores} y {@link Clientes} respectivamente (si
  * se proveen esos DAOs); si no se proveen, o el id no existe, quedan null.
  *
  * El campo total NO se persiste: Compra ya lo calcula siempre a partir de
@@ -52,14 +51,14 @@ public class Compras extends AccesoAleatorio {
 
     private DetallesCompra detallesCompraDAO;
     private Proveedores proveedoresDAO;
-    private Usuarios usuariosDAO;
+    private Clientes clientesDAO;
 
     public Compras(String nomArchivo, DetallesCompra detallesCompraDAO,
-                   Proveedores proveedoresDAO, Usuarios usuariosDAO) {
+                   Proveedores proveedoresDAO, Clientes clientesDAO) {
         super(nomArchivo, TAM_REGISTRO);
         this.detallesCompraDAO = detallesCompraDAO;
         this.proveedoresDAO = proveedoresDAO;
-        this.usuariosDAO = usuariosDAO;
+        this.clientesDAO = clientesDAO;
     }
 
     public Compras(String nomArchivo, DetallesCompra detallesCompraDAO) {
@@ -82,8 +81,8 @@ public class Compras extends AccesoAleatorio {
         this.proveedoresDAO = proveedoresDAO;
     }
 
-    public void setUsuariosDAO(Usuarios usuariosDAO) {
-        this.usuariosDAO = usuariosDAO;
+    public void setClientesDAO(Clientes clientesDAO) {
+        this.clientesDAO = clientesDAO;
     }
 
     private Compra leeEncabezado() throws IOException {
@@ -110,10 +109,9 @@ public class Compras extends AccesoAleatorio {
     }
 
     private Cliente resolverCliente(int idCliente) {
-        if (idCliente <= 0 || usuariosDAO == null) return null;
+        if (idCliente <= 0 || clientesDAO == null) return null;
         try {
-            Usuario u = usuariosDAO.buscar(idCliente);
-            return (u instanceof Cliente) ? (Cliente) u : null;
+            return clientesDAO.buscar(idCliente);
         } catch (PersistenciaException pe) {
             return null;
         }

@@ -36,7 +36,8 @@ import java.util.stream.Collectors;
  *          ↓
  *   FachadaArchivos   ← único punto de acceso (implementa IFachadaTienda)
  *          ↓
- *   Categorias / Productos / Inventarios / Proveedores / Roles / Usuarios
+ *   Categorias / Productos / Inventarios / Proveedores / Roles
+ *   Administradores / Cajeros / Clientes
  *   Ventas+DetallesVenta / Compras+DetallesCompra / Facturas+DetallesFactura
  *          ↓
  *   AccesoAleatorio (RandomAccessFile, seek por numRegistro * tamRegistro)
@@ -61,7 +62,9 @@ public class FachadaArchivos implements IFachadaTienda {
     private final Inventarios inventariosDAO;
     private final Proveedores proveedoresDAO;
     private final Roles       rolesDAO;
-    private final Usuarios    usuariosDAO;
+    private final Administradores administradoresDAO;
+    private final Cajeros         cajerosDAO;
+    private final Clientes        clientesDAO;
     private final DetallesVenta   detallesVentaDAO;
     private final Ventas          ventasDAO;
     private final DetallesCompra  detallesCompraDAO;
@@ -82,13 +85,15 @@ public class FachadaArchivos implements IFachadaTienda {
         inventariosDAO     = new Inventarios("inventarios.dat", productosDAO);
         proveedoresDAO     = new Proveedores();
         rolesDAO           = new Roles();
-        usuariosDAO        = new Usuarios("usuarios.dat", rolesDAO);
+        administradoresDAO = new Administradores("administradores.dat", rolesDAO);
+        cajerosDAO         = new Cajeros("cajeros.dat", rolesDAO);
+        clientesDAO        = new Clientes("clientes.dat", rolesDAO);
         detallesVentaDAO   = new DetallesVenta("detallesVenta.dat", productosDAO);
         ventasDAO          = new Ventas("ventas.dat", detallesVentaDAO);
         detallesCompraDAO  = new DetallesCompra("detallesCompra.dat", productosDAO);
-        comprasDAO         = new Compras("compras.dat", detallesCompraDAO, proveedoresDAO, usuariosDAO);
+        comprasDAO         = new Compras("compras.dat", detallesCompraDAO, proveedoresDAO, clientesDAO);
         detallesFacturaDAO = new DetallesFactura("detallesFactura.dat", productosDAO);
-        facturasDAO        = new Facturas("facturas.dat", detallesFacturaDAO, ventasDAO, usuariosDAO);
+        facturasDAO        = new Facturas("facturas.dat", detallesFacturaDAO, ventasDAO, clientesDAO, cajerosDAO);
     }
 
     public static String getNombreTienda() { return NOMBRE_TIENDA; }
@@ -615,18 +620,45 @@ public class FachadaArchivos implements IFachadaTienda {
     }
 
     // ── Usuarios ─────────────────────────────────────────────────────────────
+    //
+    // Ya no existe una clase "Usuarios" que coordine: Administrador, Cajero
+    // y Cliente viven cada uno en su propio DAO/archivo, y es la fachada la
+    // que decide -- via instanceof -- a cual de los tres delegar cada
+    // operacion. El id de usuario sigue siendo unico en TODO el sistema
+    // (no solo dentro de un archivo): se calcula el mayor id entre los
+    // tres archivos antes de agregar uno nuevo (ver #siguienteIdUsuario).
 
     @Override
     public void agregarUsuario(Usuario u) throws FachadaException {
         if (existeUsuarioConEmail(u.getEmail())) {
             throw new FachadaException("Ya existe un usuario con el email: " + u.getEmail());
         }
-        conCheckedVoid(() -> usuariosDAO.agregar(u));
+        conCheckedVoid(() -> agregarUsuarioInterno(u));
+    }
+
+    private void agregarUsuarioInterno(Usuario u) throws PersistenciaException {
+        int nuevoId = siguienteIdUsuario();
+        if (u instanceof Administrador) {
+            administradoresDAO.agregar((Administrador) u, nuevoId);
+        } else if (u instanceof Cajero) {
+            cajerosDAO.agregar((Cajero) u, nuevoId);
+        } else if (u instanceof Cliente) {
+            clientesDAO.agregar((Cliente) u, nuevoId);
+        } else {
+            throw new PersistenciaException("Tipo de usuario desconocido: " + u.getClass().getSimpleName());
+        }
+    }
+
+    private int siguienteIdUsuario() throws PersistenciaException {
+        int maxAdmin   = administradoresDAO.maxId();
+        int maxCajero  = cajerosDAO.maxId();
+        int maxCliente = clientesDAO.maxId();
+        return Math.max(maxAdmin, Math.max(maxCajero, maxCliente)) + 1;
     }
 
     private boolean existeUsuarioConEmail(String email) {
         try {
-            usuariosDAO.buscarPorEmail(email);
+            buscarUsuarioPorEmailInterno(email);
             return true;
         } catch (PersistenciaException pe) {
             return false;
@@ -635,32 +667,87 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public void actualizarUsuario(Usuario u) throws FachadaException {
-        conCheckedVoid(() -> usuariosDAO.actualizar(u));
+        conCheckedVoid(() -> {
+            if (u instanceof Administrador) {
+                administradoresDAO.actualizar((Administrador) u);
+            } else if (u instanceof Cajero) {
+                cajerosDAO.actualizar((Cajero) u);
+            } else if (u instanceof Cliente) {
+                clientesDAO.actualizar((Cliente) u);
+            } else {
+                throw new PersistenciaException("Tipo de usuario desconocido: " + u.getClass().getSimpleName());
+            }
+        });
     }
 
     @Override
     public void inactivarUsuario(int id) throws FachadaException {
-        conCheckedVoid(() -> usuariosDAO.inactivar(id));
+        conCheckedVoid(() -> {
+            Usuario u = buscarUsuarioInterno(id);
+            if (u instanceof Administrador) {
+                administradoresDAO.inactivar(id);
+            } else if (u instanceof Cajero) {
+                cajerosDAO.inactivar(id);
+            } else {
+                clientesDAO.inactivar(id);
+            }
+        });
     }
 
     @Override
     public Usuario buscarUsuario(int idUsuario) throws FachadaException {
-        return conChecked(() -> usuariosDAO.buscar(idUsuario));
+        return conChecked(() -> buscarUsuarioInterno(idUsuario));
+    }
+
+    // Busca en los tres archivos (el id es unico entre los tres, asi que
+    // a lo sumo uno lo tiene).
+    private Usuario buscarUsuarioInterno(int idUsuario) throws PersistenciaException {
+        try {
+            return administradoresDAO.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return cajerosDAO.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return clientesDAO.buscar(idUsuario);
+        } catch (PersistenciaException ignorado) { }
+        throw new PersistenciaException("Usuario no encontrado: id=" + idUsuario);
     }
 
     @Override
     public Usuario buscarUsuarioPorEmail(String email) throws FachadaException {
-        return conChecked(() -> usuariosDAO.buscarPorEmail(email));
+        return conChecked(() -> buscarUsuarioPorEmailInterno(email));
+    }
+
+    private Usuario buscarUsuarioPorEmailInterno(String email) throws PersistenciaException {
+        try {
+            return administradoresDAO.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return cajerosDAO.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        try {
+            return clientesDAO.buscarPorEmail(email);
+        } catch (PersistenciaException ignorado) { }
+        throw new PersistenciaException("Usuario no encontrado con email: " + email);
     }
 
     @Override
     public ArrayList<Usuario> listarUsuarios() {
-        return sinChequeo(usuariosDAO::obtenerTodos);
+        return sinChequeo(this::obtenerTodosLosUsuarios);
+    }
+
+    private ArrayList<Usuario> obtenerTodosLosUsuarios() throws PersistenciaException {
+        ArrayList<Usuario> resultado = new ArrayList<>();
+        resultado.addAll(administradoresDAO.obtenerTodos());
+        resultado.addAll(cajerosDAO.obtenerTodos());
+        resultado.addAll(clientesDAO.obtenerTodos());
+        return resultado;
     }
 
     @Override
     public ArrayList<Usuario> buscarUsuariosPor(Predicate<Usuario> condicion) {
-        return sinChequeo(usuariosDAO::obtenerTodos).stream()
+        return sinChequeo(this::obtenerTodosLosUsuarios).stream()
                 .filter(condicion)
                 .collect(Collectors.toCollection(ArrayList::new));
     }
@@ -672,12 +759,18 @@ public class FachadaArchivos implements IFachadaTienda {
 
     @Override
     public ArrayList<Usuario> listarUsuariosActivos() {
-        return sinChequeo(usuariosDAO::listarActivos);
+        return sinChequeo(() -> {
+            ArrayList<Usuario> resultado = new ArrayList<>();
+            resultado.addAll(administradoresDAO.listarActivos());
+            resultado.addAll(cajerosDAO.listarActivos());
+            resultado.addAll(clientesDAO.listarActivos());
+            return resultado;
+        });
     }
 
     @Override
     public ArrayList<Usuario> listarUsuariosPorPermiso(String permiso) {
-        return sinChequeo(() -> usuariosDAO.listarPorPermiso(permiso));
+        return buscarUsuariosPor(u -> u.getPermiso().equalsIgnoreCase(permiso));
     }
 
     @Override
