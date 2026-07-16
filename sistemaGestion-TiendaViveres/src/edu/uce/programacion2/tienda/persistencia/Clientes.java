@@ -6,6 +6,7 @@ import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia EXCLUSIVA de los Clientes en su
@@ -144,12 +145,9 @@ public class Clientes extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Cliente c = leeCliente();
-                    if (c.getIdUsuario() == idUsuario) return c;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cliente no encontrado: id=" + idUsuario);
+                Cliente c = buscarConStream(this::leeCliente, x -> x.getIdUsuario() == idUsuario);
+                if (c == null) throw new PersistenciaException("Cliente no encontrado: id=" + idUsuario);
+                return c;
             } finally {
                 archivo.close();
             }
@@ -164,12 +162,9 @@ public class Clientes extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Cliente c = leeCliente();
-                    if (c.getEmail().equalsIgnoreCase(email)) return c;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cliente no encontrado con email: " + email);
+                Cliente c = buscarConStream(this::leeCliente, x -> x.getEmail().equalsIgnoreCase(email));
+                if (c == null) throw new PersistenciaException("Cliente no encontrado con email: " + email);
+                return c;
             } finally {
                 archivo.close();
             }
@@ -184,16 +179,12 @@ public class Clientes extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Cliente leido = leeCliente();
-                    if (leido.getIdUsuario() == c.getIdUsuario()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeCliente(c);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeCliente, x -> x.getIdUsuario() == c.getIdUsuario());
+                if (indice == -1) {
+                    throw new PersistenciaException("Cliente no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cliente no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeCliente(c);
             } finally {
                 archivo.close();
             }
@@ -211,28 +202,21 @@ public class Clientes extends AccesoAleatorio {
     }
 
     public ArrayList<Cliente> listarActivos() throws PersistenciaException {
-        ArrayList<Cliente> resultado = new ArrayList<>();
-        for (Cliente c : obtenerTodos()) {
-            if (c.isActivo()) resultado.add(c);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Cliente::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public ArrayList<Cliente> obtenerTodos() throws PersistenciaException {
-        ArrayList<Cliente> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeCliente());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeCliente);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los clientes.");
         }

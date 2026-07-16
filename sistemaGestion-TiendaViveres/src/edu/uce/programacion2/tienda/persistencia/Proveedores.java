@@ -5,6 +5,7 @@ import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de los proveedores en archivo binario
@@ -84,16 +85,10 @@ public class Proveedores extends AccesoAleatorio {
         int nuevoId = siguienteId();
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
-            try {
-                while (true) {
-                    Proveedor leido = leeProveedor();
-                    if (leido.getRuc().equalsIgnoreCase(p.getRuc())) {
-                        throw new PersistenciaException(
-                                "Proveedor ya existe con RUC: " + p.getRuc());
-                    }
-                }
-            } catch (EOFException eof) {
-                // llegamos al final, no hay duplicado
+            Proveedor existente = buscarConStream(this::leeProveedor,
+                    x -> x.getRuc().equalsIgnoreCase(p.getRuc()));
+            if (existente != null) {
+                throw new PersistenciaException("Proveedor ya existe con RUC: " + p.getRuc());
             }
             p.setIdProveedor(nuevoId);
             archivo.seek(archivo.length());
@@ -117,12 +112,9 @@ public class Proveedores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Proveedor p = leeProveedor();
-                    if (p.getIdProveedor() == idProveedor) return p;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Proveedor no encontrado: id=" + idProveedor);
+                Proveedor p = buscarConStream(this::leeProveedor, x -> x.getIdProveedor() == idProveedor);
+                if (p == null) throw new PersistenciaException("Proveedor no encontrado: id=" + idProveedor);
+                return p;
             } finally {
                 archivo.close();
             }
@@ -138,12 +130,9 @@ public class Proveedores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Proveedor p = leeProveedor();
-                    if (p.getRuc().equalsIgnoreCase(ruc)) return p;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Proveedor no encontrado con RUC: " + ruc);
+                Proveedor p = buscarConStream(this::leeProveedor, x -> x.getRuc().equalsIgnoreCase(ruc));
+                if (p == null) throw new PersistenciaException("Proveedor no encontrado con RUC: " + ruc);
+                return p;
             } finally {
                 archivo.close();
             }
@@ -159,16 +148,12 @@ public class Proveedores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Proveedor leido = leeProveedor();
-                    if (leido.getIdProveedor() == p.getIdProveedor()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeProveedor(p);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeProveedor, x -> x.getIdProveedor() == p.getIdProveedor());
+                if (indice == -1) {
+                    throw new PersistenciaException("Proveedor no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Proveedor no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeProveedor(p);
             } finally {
                 archivo.close();
             }
@@ -192,29 +177,22 @@ public class Proveedores extends AccesoAleatorio {
 
     /** Retorna solo los proveedores activos (equivalente a WHERE activo = 1). */
     public ArrayList<Proveedor> listarActivos() throws PersistenciaException {
-        ArrayList<Proveedor> resultado = new ArrayList<>();
-        for (Proveedor p : obtenerTodos()) {
-            if (p.isActivo()) resultado.add(p);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Proveedor::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     // Devuelve todos los proveedores registrados (activos e inactivos).
     public ArrayList<Proveedor> obtenerTodos() throws PersistenciaException {
-        ArrayList<Proveedor> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeProveedor());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeProveedor);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los proveedores.");
         }

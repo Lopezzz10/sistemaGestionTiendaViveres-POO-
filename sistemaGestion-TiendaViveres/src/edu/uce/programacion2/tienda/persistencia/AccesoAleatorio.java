@@ -4,6 +4,11 @@ import java.io.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 /**
  * Clase base que implementa el acceso a archivos binarios de acceso aleatorio.
@@ -176,5 +181,109 @@ public class AccesoAleatorio {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    // =========================================================================
+    // lectura de registros con Stream API (reemplaza el patron
+    // "while(true) { leer(); } catch(EOFException)" que usaban antes todas
+    // las clases DAO). Como cada registro tiene tamano fijo, la cantidad
+    // total de registros se conoce de antemano (archivo.length() / tamRegistro),
+    // asi que se puede recorrer con LongStream.range(...) en vez de leer
+    // "a ciegas" hasta que truene el EOF.
+    // =========================================================================
+
+    /** Funcion que lee UN registro completo en la posicion actual del archivo. */
+    @FunctionalInterface
+    public interface LectorRegistro<T> {
+        T leer() throws IOException;
+    }
+
+    // Envuelve una IOException dentro de una excepcion no verificada para
+    // poder lanzarla desde dentro de un lambda de Stream (filter/mapToObj no
+    // declaran "throws IOException"), y la desenvuelve de vuelta apenas
+    // termina el stream. El resto del codigo sigue viendo IOException, como
+    // siempre.
+    private <R> R propagando(java.util.concurrent.Callable<R> accion) throws IOException {
+        try {
+            return accion.call();
+        } catch (UncheckedIOException uioe) {
+            throw uioe.getCause();
+        } catch (IOException ioe) {
+            throw ioe;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Lee TODOS los registros del archivo ya abierto (campo {@code archivo})
+     * usando Stream API: genera un indice por cada registro existente,
+     * posiciona el archivo (seek) y lo lee con el {@code lector} recibido.
+     * Reemplaza el clasico bucle "while(true) { lista.add(leeX()); }".
+     */
+    protected <T> ArrayList<T> leerTodosConStream(LectorRegistro<T> lector) throws IOException {
+        return propagando(() -> {
+            long total = archivo.length() / tamRegistro;
+            return LongStream.range(0, total)
+                    .mapToObj(i -> {
+                        try {
+                            archivo.seek(i * tamRegistro);
+                            return lector.leer();
+                        } catch (IOException ioe) {
+                            throw new UncheckedIOException(ioe);
+                        }
+                    })
+                    .collect(Collectors.toCollection(ArrayList::new));
+        });
+    }
+
+    /**
+     * Busca el PRIMER registro que cumpla {@code criterio}, leyendo con
+     * Stream API. Gracias a que el Stream es perezoso (lazy), la busqueda
+     * se corta apenas se encuentra coincidencia (findFirst), sin necesidad
+     * de leer el archivo completo -- igual de eficiente que el bucle
+     * "while(true) { if (...) return; }" que reemplaza. Retorna null si
+     * ningun registro cumple el criterio.
+     */
+    protected <T> T buscarConStream(LectorRegistro<T> lector, Predicate<T> criterio) throws IOException {
+        return propagando(() -> {
+            long total = archivo.length() / tamRegistro;
+            return LongStream.range(0, total)
+                    .mapToObj(i -> {
+                        try {
+                            archivo.seek(i * tamRegistro);
+                            return lector.leer();
+                        } catch (IOException ioe) {
+                            throw new UncheckedIOException(ioe);
+                        }
+                    })
+                    .filter(criterio)
+                    .findFirst()
+                    .orElse(null);
+        });
+    }
+
+    /**
+     * Igual que {@link #buscarConStream}, pero en vez de devolver el
+     * registro devuelve su INDICE (numero de registro, 0-based) dentro del
+     * archivo, o -1 si ninguno cumple el criterio. Se usa en los metodos
+     * actualizar() de las clases DAO para reposicionarse (seek) y
+     * sobreescribir el registro encontrado.
+     */
+    protected <T> long indiceConStream(LectorRegistro<T> lector, Predicate<T> criterio) throws IOException {
+        return propagando(() -> {
+            long total = archivo.length() / tamRegistro;
+            return LongStream.range(0, total)
+                    .filter(i -> {
+                        try {
+                            archivo.seek(i * tamRegistro);
+                            return criterio.test(lector.leer());
+                        } catch (IOException ioe) {
+                            throw new UncheckedIOException(ioe);
+                        }
+                    })
+                    .findFirst()
+                    .orElse(-1L);
+        });
     }
 }

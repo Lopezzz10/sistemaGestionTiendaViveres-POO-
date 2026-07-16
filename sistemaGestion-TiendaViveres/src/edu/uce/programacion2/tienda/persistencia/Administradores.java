@@ -6,6 +6,7 @@ import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia EXCLUSIVA de los Administradores en su
@@ -137,12 +138,9 @@ public class Administradores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Administrador a = leeAdministrador();
-                    if (a.getIdUsuario() == idUsuario) return a;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Administrador no encontrado: id=" + idUsuario);
+                Administrador a = buscarConStream(this::leeAdministrador, x -> x.getIdUsuario() == idUsuario);
+                if (a == null) throw new PersistenciaException("Administrador no encontrado: id=" + idUsuario);
+                return a;
             } finally {
                 archivo.close();
             }
@@ -157,12 +155,9 @@ public class Administradores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Administrador a = leeAdministrador();
-                    if (a.getEmail().equalsIgnoreCase(email)) return a;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Administrador no encontrado con email: " + email);
+                Administrador a = buscarConStream(this::leeAdministrador, x -> x.getEmail().equalsIgnoreCase(email));
+                if (a == null) throw new PersistenciaException("Administrador no encontrado con email: " + email);
+                return a;
             } finally {
                 archivo.close();
             }
@@ -177,16 +172,12 @@ public class Administradores extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Administrador leido = leeAdministrador();
-                    if (leido.getIdUsuario() == a.getIdUsuario()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeAdministrador(a);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeAdministrador, x -> x.getIdUsuario() == a.getIdUsuario());
+                if (indice == -1) {
+                    throw new PersistenciaException("Administrador no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Administrador no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeAdministrador(a);
             } finally {
                 archivo.close();
             }
@@ -204,28 +195,21 @@ public class Administradores extends AccesoAleatorio {
     }
 
     public ArrayList<Administrador> listarActivos() throws PersistenciaException {
-        ArrayList<Administrador> resultado = new ArrayList<>();
-        for (Administrador a : obtenerTodos()) {
-            if (a.isActivo()) resultado.add(a);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Administrador::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public ArrayList<Administrador> obtenerTodos() throws PersistenciaException {
-        ArrayList<Administrador> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeAdministrador());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeAdministrador);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los administradores.");
         }

@@ -6,6 +6,7 @@ import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia EXCLUSIVA de los Cajeros en su propio
@@ -122,12 +123,9 @@ public class Cajeros extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Cajero c = leeCajero();
-                    if (c.getIdUsuario() == idUsuario) return c;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cajero no encontrado: id=" + idUsuario);
+                Cajero c = buscarConStream(this::leeCajero, x -> x.getIdUsuario() == idUsuario);
+                if (c == null) throw new PersistenciaException("Cajero no encontrado: id=" + idUsuario);
+                return c;
             } finally {
                 archivo.close();
             }
@@ -142,12 +140,9 @@ public class Cajeros extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Cajero c = leeCajero();
-                    if (c.getEmail().equalsIgnoreCase(email)) return c;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cajero no encontrado con email: " + email);
+                Cajero c = buscarConStream(this::leeCajero, x -> x.getEmail().equalsIgnoreCase(email));
+                if (c == null) throw new PersistenciaException("Cajero no encontrado con email: " + email);
+                return c;
             } finally {
                 archivo.close();
             }
@@ -162,16 +157,12 @@ public class Cajeros extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Cajero leido = leeCajero();
-                    if (leido.getIdUsuario() == c.getIdUsuario()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeCajero(c);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeCajero, x -> x.getIdUsuario() == c.getIdUsuario());
+                if (indice == -1) {
+                    throw new PersistenciaException("Cajero no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Cajero no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeCajero(c);
             } finally {
                 archivo.close();
             }
@@ -189,28 +180,21 @@ public class Cajeros extends AccesoAleatorio {
     }
 
     public ArrayList<Cajero> listarActivos() throws PersistenciaException {
-        ArrayList<Cajero> resultado = new ArrayList<>();
-        for (Cajero c : obtenerTodos()) {
-            if (c.isActivo()) resultado.add(c);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Cajero::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public ArrayList<Cajero> obtenerTodos() throws PersistenciaException {
-        ArrayList<Cajero> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeCajero());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeCajero);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los cajeros.");
         }

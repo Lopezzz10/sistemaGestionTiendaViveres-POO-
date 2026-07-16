@@ -12,6 +12,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de las facturas en archivo binario de
@@ -175,9 +176,6 @@ public class Facturas extends AccesoAleatorio {
         if (existeNumero(f.getNumeroFactura())) {
             throw new PersistenciaException("Factura ya existe: " + f.getNumeroFactura());
         }
-        // Ver comentario equivalente en Usuarios.agregar(): siguienteId() debe
-        // calcularse antes de abrir el archivo para escritura, porque abre y
-        // cierra su propia RandomAccessFile sobre el campo "archivo" heredado.
         int nuevoId = siguienteId();
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
@@ -197,71 +195,126 @@ public class Facturas extends AccesoAleatorio {
         }
     }
 
+    /**
+     * Verifica si ya existe una factura con el mismo número usando Stream API.
+     */
     private boolean existeNumero(String numeroFactura) throws PersistenciaException {
-        for (Factura f : obtenerTodosLosEncabezados()) {
-            if (f.getNumeroFactura().trim().equalsIgnoreCase(numeroFactura.trim())) return true;
-        }
-        return false;
-    }
-
-    /** Calcula el siguiente id auto-incremental (maximo id existente + 1), solo sobre encabezados. */
-    public int siguienteId() throws PersistenciaException {
-        return GeneradorId.siguienteId(obtenerTodosLosEncabezados(), Factura::getIdFactura);
-    }
-
-    // Lee todos los encabezados (sin lineas fiscales persistidas adjuntas).
-    private ArrayList<Factura> obtenerTodosLosEncabezados() throws PersistenciaException {
-        ArrayList<Factura> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) lista.add(leeEncabezado());
-            } catch (EOFException eof) {
-                // fin del archivo
+                return buscarConStream(this::leeEncabezado,
+                        x -> x.getNumeroFactura().trim().equalsIgnoreCase(numeroFactura.trim())) != null;
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            // archivo aun no existe
+            return false;
+        } catch (IOException ioe) {
+            throw new PersistenciaException("Error al verificar existencia de factura.");
+        }
+    }
+
+    /**
+     * Calcula el siguiente id auto-incremental (maximo id existente + 1),
+     * usando Stream API para leer todos los encabezados.
+     */
+    public int siguienteId() throws PersistenciaException {
+        try {
+            archivo = new RandomAccessFile(nomArchivo, "r");
+            try {
+                return leerTodosConStream(this::leeEncabezado).stream()
+                        .mapToInt(Factura::getIdFactura)
+                        .max()
+                        .orElse(0) + 1;
+            } finally {
+                archivo.close();
+            }
+        } catch (FileNotFoundException fnf) {
+            return 1;
+        } catch (IOException ioe) {
+            throw new PersistenciaException("Error al calcular el siguiente id de factura.");
+        }
+    }
+
+    /**
+     * Lee todos los encabezados (sin lineas fiscales persistidas adjuntas)
+     * usando Stream API.
+     */
+    private ArrayList<Factura> obtenerTodosLosEncabezados() throws PersistenciaException {
+        try {
+            archivo = new RandomAccessFile(nomArchivo, "r");
+            try {
+                return leerTodosConStream(this::leeEncabezado);
+            } finally {
+                archivo.close();
+            }
+        } catch (FileNotFoundException fnf) {
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al leer los encabezados de factura.");
         }
-        return lista;
     }
 
-    // Busca una factura por su numero, con sus lineas fiscales ya adjuntas.
+    /**
+     * Busca una factura por su número usando Stream API, con sus lineas fiscales ya adjuntas.
+     */
     public Factura buscar(String numeroFactura) throws PersistenciaException {
-        for (Factura f : obtenerTodosLosEncabezados()) {
-            if (f.getNumeroFactura().trim().equalsIgnoreCase(numeroFactura.trim())) {
+        try {
+            archivo = new RandomAccessFile(nomArchivo, "r");
+            try {
+                Factura f = buscarConStream(this::leeEncabezado,
+                        x -> x.getNumeroFactura().trim().equalsIgnoreCase(numeroFactura.trim()));
+                if (f == null) {
+                    throw new PersistenciaException("Factura no encontrada: " + numeroFactura);
+                }
                 return conDetalles(f);
+            } finally {
+                archivo.close();
             }
+        } catch (FileNotFoundException fnf) {
+            throw new PersistenciaException("Factura no encontrada: " + numeroFactura);
+        } catch (IOException ioe) {
+            throw new PersistenciaException("Error al buscar la factura.");
         }
-        throw new PersistenciaException("Factura no encontrada: " + numeroFactura);
     }
 
-    // Busca una factura por su id, con sus lineas fiscales ya adjuntas.
+    /**
+     * Busca una factura por su id usando Stream API, con sus lineas fiscales ya adjuntas.
+     */
     public Factura buscarPorId(int idFactura) throws PersistenciaException {
-        for (Factura f : obtenerTodosLosEncabezados()) {
-            if (f.getIdFactura() == idFactura) return conDetalles(f);
+        try {
+            archivo = new RandomAccessFile(nomArchivo, "r");
+            try {
+                Factura f = buscarConStream(this::leeEncabezado, x -> x.getIdFactura() == idFactura);
+                if (f == null) {
+                    throw new PersistenciaException("Factura no encontrada: id=" + idFactura);
+                }
+                return conDetalles(f);
+            } finally {
+                archivo.close();
+            }
+        } catch (FileNotFoundException fnf) {
+            throw new PersistenciaException("Factura no encontrada: id=" + idFactura);
+        } catch (IOException ioe) {
+            throw new PersistenciaException("Error al buscar la factura.");
         }
-        throw new PersistenciaException("Factura no encontrada: id=" + idFactura);
     }
 
-    // Actualiza el encabezado de una factura existente y reemplaza sus lineas fiscales.
+    /**
+     * Actualiza el encabezado de una factura existente usando Stream API
+     * para encontrar el registro y reemplaza sus lineas fiscales.
+     */
     public void actualizar(Factura f) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Factura leida = leeEncabezado();
-                    if (leida.getNumeroFactura().trim().equalsIgnoreCase(f.getNumeroFactura().trim())) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeEncabezado(f);
-                        break;
-                    }
+                long indice = indiceConStream(this::leeEncabezado,
+                        x -> x.getNumeroFactura().trim().equalsIgnoreCase(f.getNumeroFactura().trim()));
+                if (indice == -1) {
+                    throw new PersistenciaException("Factura no encontrada para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Factura no encontrada para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeEncabezado(f);
             } finally {
                 archivo.close();
             }
@@ -276,32 +329,52 @@ public class Facturas extends AccesoAleatorio {
         }
     }
 
-    /** Inactiva (borrado logico) una factura reutilizando {@link Factura#anular()}. */
+    /**
+     * Inactiva (borrado logico) una factura reutilizando {@link Factura#anular()}.
+     */
     public void eliminar(String numeroFactura) throws PersistenciaException {
         Factura f = buscar(numeroFactura);
         f.anular();
         actualizar(f);
     }
 
-    /** Retorna solo las facturas con estado EMITIDA, con sus lineas fiscales adjuntas. */
+    /**
+     * Retorna solo las facturas con estado EMITIDA, con sus lineas fiscales adjuntas.
+     */
     public ArrayList<Factura> listarEmitidas() throws PersistenciaException {
-        ArrayList<Factura> resultado = new ArrayList<>();
-        for (Factura f : obtenerTodos())
-            if (f.getEstado() == Factura.EstadoFactura.EMITIDA) resultado.add(f);
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(f -> f.getEstado() == Factura.EstadoFactura.EMITIDA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /** Retorna solo las facturas con estado ANULADA, con sus lineas fiscales adjuntas. */
+    /**
+     * Retorna solo las facturas con estado ANULADA, con sus lineas fiscales adjuntas.
+     */
     public ArrayList<Factura> listarAnuladas() throws PersistenciaException {
-        ArrayList<Factura> resultado = new ArrayList<>();
-        for (Factura f : obtenerTodos())
-            if (f.getEstado() == Factura.EstadoFactura.ANULADA) resultado.add(f);
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(f -> f.getEstado() == Factura.EstadoFactura.ANULADA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    // Devuelve todas las facturas registradas, cada una con sus lineas fiscales adjuntas.
+    /**
+     * Devuelve todas las facturas registradas, cada una con sus lineas fiscales adjuntas.
+     * Usa Stream API para leer todos los encabezados y luego agrupa los detalles
+     * en una sola pasada para evitar N+1 queries.
+     */
     public ArrayList<Factura> obtenerTodos() throws PersistenciaException {
-        ArrayList<Factura> lista = obtenerTodosLosEncabezados();
+        ArrayList<Factura> lista;
+        try {
+            archivo = new RandomAccessFile(nomArchivo, "r");
+            try {
+                lista = leerTodosConStream(this::leeEncabezado);
+            } finally {
+                archivo.close();
+            }
+        } catch (FileNotFoundException fnf) {
+            return new ArrayList<>();
+        } catch (IOException ioe) {
+            throw new PersistenciaException("Error al obtener las facturas.");
+        }
 
         // En vez de llamar a conDetalles(f) por cada factura -- lo que reabria
         // y releia el archivo de detalles completo una vez por factura -- se
@@ -311,16 +384,15 @@ public class Facturas extends AccesoAleatorio {
                         ? detallesFacturaDAO.obtenerAgrupadoPorFactura()
                         : new java.util.HashMap<>();
 
-        ArrayList<Factura> conTodosLosDetalles = new ArrayList<>();
-        for (Factura f : lista) {
-            ArrayList<DetalleFactura> persistidos = detallesPorFactura.get(f.getIdFactura());
-            if (persistidos != null && !persistidos.isEmpty()) {
-                f.getDetalles().clear();
-                for (DetalleFactura d : persistidos) f.agregarDetalle(d);
-            }
-            conTodosLosDetalles.add(f);
-        }
-        return conTodosLosDetalles;
+        return lista.stream()
+                .peek(f -> {
+                    ArrayList<DetalleFactura> persistidos = detallesPorFactura.get(f.getIdFactura());
+                    if (persistidos != null && !persistidos.isEmpty()) {
+                        f.getDetalles().clear();
+                        persistidos.forEach(f::agregarDetalle);
+                    }
+                })
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     /**
@@ -329,11 +401,9 @@ public class Facturas extends AccesoAleatorio {
      * y retorna las facturas que lo cumplen, con sus lineas fiscales adjuntas.
      */
     public ArrayList<Factura> buscarPor(Predicate<Factura> criterio) throws PersistenciaException {
-        ArrayList<Factura> resultado = new ArrayList<>();
-        for (Factura f : obtenerTodos()) {
-            if (criterio.test(f)) resultado.add(f);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(criterio)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public int conteo() {

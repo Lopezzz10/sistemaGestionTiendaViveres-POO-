@@ -8,6 +8,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de los roles en archivo binario
@@ -92,16 +93,10 @@ public class Roles extends AccesoAleatorio {
         int nuevoId = siguienteId();
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
-            try {
-                while (true) {
-                    Rol leido = leeRol();
-                    if (leido.getNombreCargo().equalsIgnoreCase(r.getNombreCargo())) {
-                        throw new PersistenciaException(
-                                "Ya existe un rol con el cargo: " + r.getNombreCargo());
-                    }
-                }
-            } catch (EOFException eof) {
-                // llegamos al final, no hay duplicado
+            Rol existente = buscarConStream(this::leeRol,
+                    x -> x.getNombreCargo().equalsIgnoreCase(r.getNombreCargo()));
+            if (existente != null) {
+                throw new PersistenciaException("Ya existe un rol con el cargo: " + r.getNombreCargo());
             }
             r.setIdRol(nuevoId);
             archivo.seek(archivo.length());
@@ -125,12 +120,9 @@ public class Roles extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Rol r = leeRol();
-                    if (r.getIdRol() == idRol) return r;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Rol no encontrado. Id: " + idRol);
+                Rol r = buscarConStream(this::leeRol, x -> x.getIdRol() == idRol);
+                if (r == null) throw new PersistenciaException("Rol no encontrado. Id: " + idRol);
+                return r;
             } finally {
                 archivo.close();
             }
@@ -146,12 +138,9 @@ public class Roles extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Rol r = leeRol();
-                    if (r.getNombreCargo().equalsIgnoreCase(nombreCargo)) return r;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Rol no encontrado: " + nombreCargo);
+                Rol r = buscarConStream(this::leeRol, x -> x.getNombreCargo().equalsIgnoreCase(nombreCargo));
+                if (r == null) throw new PersistenciaException("Rol no encontrado: " + nombreCargo);
+                return r;
             } finally {
                 archivo.close();
             }
@@ -167,16 +156,12 @@ public class Roles extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Rol leido = leeRol();
-                    if (leido.getIdRol() == r.getIdRol()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeRol(r);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeRol, x -> x.getIdRol() == r.getIdRol());
+                if (indice == -1) {
+                    throw new PersistenciaException("Rol no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Rol no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeRol(r);
             } finally {
                 archivo.close();
             }
@@ -196,29 +181,22 @@ public class Roles extends AccesoAleatorio {
 
     /** Retorna solo los roles activos. */
     public ArrayList<Rol> listarActivos() throws PersistenciaException {
-        ArrayList<Rol> resultado = new ArrayList<>();
-        for (Rol r : obtenerTodos()) {
-            if (r.isActivo()) resultado.add(r);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Rol::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     // Devuelve todos los roles registrados (activos e inactivos).
     public ArrayList<Rol> obtenerTodos() throws PersistenciaException {
-        ArrayList<Rol> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeRol());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeRol);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los roles.");
         }

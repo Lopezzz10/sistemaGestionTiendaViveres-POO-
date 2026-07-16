@@ -1,6 +1,5 @@
 package edu.uce.programacion2.tienda.persistencia;
 
-import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -51,20 +50,18 @@ public class Iva extends AccesoAleatorio {
      * Lee el IVA vigente desde iva.dat. Si el archivo no existe todavia,
      * o esta vacio/corrupto, retorna {@link #IVA_POR_DEFECTO} en vez de
      * fallar: el arranque de la aplicacion no debe romperse por esto.
+     *
+     * <p>Al ser un único registro, no se usa Stream API, pero se mejora
+     * el manejo de recursos utilizando try-with-resources.
      */
     public double leerIva() {
-        try {
-            archivo = new RandomAccessFile(nomArchivo, "r");
-            try {
-                return archivo.readDouble();
-            } catch (EOFException eof) {
-                return IVA_POR_DEFECTO;
-            } finally {
-                archivo.close();
-            }
+        try (RandomAccessFile raf = new RandomAccessFile(nomArchivo, "r")) {
+            return raf.readDouble();
         } catch (FileNotFoundException fnf) {
+            // El archivo no existe: es la primera ejecución
             return IVA_POR_DEFECTO;
         } catch (IOException ioe) {
+            // El archivo existe pero está vacío o corrupto
             return IVA_POR_DEFECTO;
         }
     }
@@ -72,14 +69,14 @@ public class Iva extends AccesoAleatorio {
     /**
      * Escribe (crea si no existe, o sobreescribe si ya existe) el IVA
      * vigente en iva.dat.
+     *
+     * <p>Al ser un único registro, no se usa Stream API, pero se mejora
+     * el manejo de recursos utilizando try-with-resources.
      */
     public void guardarIva(double iva) throws IOException {
-        archivo = new RandomAccessFile(nomArchivo, "rw");
-        try {
-            archivo.seek(0);
-            archivo.writeDouble(iva);
-        } finally {
-            archivo.close();
+        try (RandomAccessFile raf = new RandomAccessFile(nomArchivo, "rw")) {
+            raf.seek(0);
+            raf.writeDouble(iva);
         }
     }
 }

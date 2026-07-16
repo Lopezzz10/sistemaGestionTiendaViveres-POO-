@@ -7,6 +7,7 @@ import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de los detalles de compra en su propio
@@ -107,8 +108,9 @@ public class DetallesCompra extends AccesoAleatorio {
 
     /** Calcula el siguiente id auto-incremental para un detalle (global, no por compra). */
     public int siguienteIdDetalle() throws PersistenciaException {
-        ArrayList<DetalleCompra> todos = new ArrayList<>();
-        for (Registro r : obtenerTodosLosRegistros()) todos.add(r.detalle);
+        ArrayList<DetalleCompra> todos = obtenerTodosLosRegistros().stream()
+                .map(r -> r.detalle)
+                .collect(Collectors.toCollection(ArrayList::new));
         return GeneradorId.siguienteId(todos, DetalleCompra::getIdDetalle);
     }
 
@@ -129,11 +131,10 @@ public class DetallesCompra extends AccesoAleatorio {
 
     /** Retorna todos los detalles que pertenecen a una compra especifica. */
     public ArrayList<DetalleCompra> obtenerPorIdCompra(int idCompra) throws PersistenciaException {
-        ArrayList<DetalleCompra> resultado = new ArrayList<>();
-        for (Registro r : obtenerTodosLosRegistros()) {
-            if (r.idCompra == idCompra) resultado.add(r.detalle);
-        }
-        return resultado;
+        return obtenerTodosLosRegistros().stream()
+                .filter(r -> r.idCompra == idCompra)
+                .map(r -> r.detalle)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     /**
@@ -144,29 +145,23 @@ public class DetallesCompra extends AccesoAleatorio {
      */
     public java.util.Map<Integer, ArrayList<DetalleCompra>> obtenerAgrupadoPorCompra()
             throws PersistenciaException {
-        java.util.Map<Integer, ArrayList<DetalleCompra>> mapa = new java.util.HashMap<>();
-        for (Registro r : obtenerTodosLosRegistros()) {
-            mapa.computeIfAbsent(r.idCompra, k -> new ArrayList<>()).add(r.detalle);
-        }
-        return mapa;
+        return obtenerTodosLosRegistros().stream()
+                .collect(Collectors.groupingBy(
+                        r -> r.idCompra,
+                        Collectors.mapping(r -> r.detalle, Collectors.toCollection(ArrayList::new))));
     }
 
     // Devuelve todos los registros (idCompra + detalle) del archivo.
     private ArrayList<Registro> obtenerTodosLosRegistros() throws PersistenciaException {
-        ArrayList<Registro> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeRegistro());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeRegistro);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los detalles de compra.");
         }
@@ -182,13 +177,21 @@ public class DetallesCompra extends AccesoAleatorio {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
                 int numRegistros = (int) (archivo.length() / tamRegistro);
-                for (int i = 0; i < numRegistros; i++) {
-                    archivo.seek((long) i * tamRegistro);
-                    int idLeido = archivo.readInt();
-                    if (idLeido == idCompra) {
-                        archivo.seek((long) i * tamRegistro);
-                        borraRegistro();
-                    }
+                try {
+                    java.util.stream.IntStream.range(0, numRegistros).forEach(i -> {
+                        try {
+                            archivo.seek((long) i * tamRegistro);
+                            int idLeido = archivo.readInt();
+                            if (idLeido == idCompra) {
+                                archivo.seek((long) i * tamRegistro);
+                                borraRegistro();
+                            }
+                        } catch (IOException ioe) {
+                            throw new UncheckedIOException(ioe);
+                        }
+                    });
+                } catch (UncheckedIOException uioe) {
+                    throw uioe.getCause();
                 }
                 empaca();
             } finally {

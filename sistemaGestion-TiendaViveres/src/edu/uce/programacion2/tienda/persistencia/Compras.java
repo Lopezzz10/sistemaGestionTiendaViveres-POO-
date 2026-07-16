@@ -5,11 +5,11 @@ import edu.uce.programacion2.tienda.negocio.Compra;
 import edu.uce.programacion2.tienda.negocio.DetalleCompra;
 import edu.uce.programacion2.tienda.negocio.Proveedor;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
-import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de las compras (a proveedor) en
@@ -85,6 +85,7 @@ public class Compras extends AccesoAleatorio {
         this.clientesDAO = clientesDAO;
     }
 
+    // Lee solo el encabezado de una compra (sin detalles) en la posicion actual.
     private Compra leeEncabezado() throws IOException {
         int idCompra        = archivo.readInt();
         long fechaMillis     = archivo.readLong();
@@ -99,6 +100,7 @@ public class Compras extends AccesoAleatorio {
         return c;
     }
 
+    // Consulta el DAO de proveedores por el id guardado.
     private Proveedor resolverProveedor(int idProveedor) {
         if (idProveedor <= 0 || proveedoresDAO == null) return null;
         try {
@@ -108,6 +110,7 @@ public class Compras extends AccesoAleatorio {
         }
     }
 
+    // Consulta el DAO de clientes por el id guardado.
     private Cliente resolverCliente(int idCliente) {
         if (idCliente <= 0 || clientesDAO == null) return null;
         try {
@@ -117,6 +120,7 @@ public class Compras extends AccesoAleatorio {
         }
     }
 
+    // Escribe solo el encabezado de una compra (sin detalles) en la posicion actual.
     private void escribeEncabezado(Compra c) throws IOException {
         archivo.writeInt(c.getIdCompra());
         archivo.writeLong(c.getFecha() != null ? c.getFecha().getTime() : 0L);
@@ -126,6 +130,7 @@ public class Compras extends AccesoAleatorio {
         archivo.writeInt(c.getCliente() != null ? c.getCliente().getIdUsuario() : 0);
     }
 
+    // Adjunta a una compra ya leida (solo encabezado) sus detalles desde DetallesCompra.
     private Compra conDetalles(Compra c) throws PersistenciaException {
         if (detallesCompraDAO != null) {
             for (DetalleCompra d : detallesCompraDAO.obtenerPorIdCompra(c.getIdCompra())) {
@@ -135,13 +140,11 @@ public class Compras extends AccesoAleatorio {
         return c;
     }
 
+    // Agrega una compra nueva (encabezado + detalles), asignandole el siguiente id.
     public void agregar(Compra c) throws PersistenciaException {
         if (c == null) {
             throw new PersistenciaException("Compra invalida.");
         }
-        // Ver comentario equivalente en Usuarios.agregar(): siguienteId() debe
-        // calcularse antes de abrir el archivo para escritura, porque abre y
-        // cierra su propia RandomAccessFile sobre el campo "archivo" heredado.
         int nuevoId = siguienteId();
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
@@ -161,50 +164,52 @@ public class Compras extends AccesoAleatorio {
         }
     }
 
+    // Asigna IDs a los detalles que no tienen uno valido.
     private ArrayList<DetalleCompra> asignarIds(ArrayList<DetalleCompra> detalles)
             throws PersistenciaException {
-        ArrayList<DetalleCompra> resultado = new ArrayList<>();
-        int siguienteId = detallesCompraDAO.siguienteIdDetalle();
-        for (DetalleCompra d : detalles) {
-            if (d.getIdDetalle() > 0) {
-                resultado.add(d);
-            } else {
-                resultado.add(new DetalleCompra(siguienteId++, d.getProducto(), d.getCantidad(),
-                        d.getPrecioCompra(), d.getDescuento()));
-            }
-        }
-        return resultado;
+        int[] siguienteId = { detallesCompraDAO.siguienteIdDetalle() };
+        return detalles.stream()
+                .map(d -> d.getIdDetalle() > 0
+                        ? d
+                        : new DetalleCompra(siguienteId[0]++, d.getProducto(), d.getCantidad(),
+                        d.getPrecioCompra(), d.getDescuento()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    /**
+     * Calcula el siguiente id auto-incremental (maximo id existente + 1),
+     * usando Stream API para leer todos los encabezados.
+     */
     public int siguienteId() throws PersistenciaException {
-        ArrayList<Compra> encabezados = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) encabezados.add(leeEncabezado());
-            } catch (EOFException eof) {
-                // fin del archivo
+                return leerTodosConStream(this::leeEncabezado).stream()
+                        .mapToInt(Compra::getIdCompra)
+                        .max()
+                        .orElse(0) + 1;
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            // archivo aun no existe: no hay encabezados
+            return 1;
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al calcular el siguiente id de compra.");
         }
-        return GeneradorId.siguienteId(encabezados, Compra::getIdCompra);
     }
 
+    /**
+     * Busca una compra por su id usando Stream API, con sus detalles ya adjuntos.
+     */
     public Compra buscar(int idCompra) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Compra c = leeEncabezado();
-                    if (c.getIdCompra() == idCompra) return conDetalles(c);
+                Compra c = buscarConStream(this::leeEncabezado, x -> x.getIdCompra() == idCompra);
+                if (c == null) {
+                    throw new PersistenciaException("Compra no encontrada: id=" + idCompra);
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Compra no encontrada: id=" + idCompra);
+                return conDetalles(c);
             } finally {
                 archivo.close();
             }
@@ -215,20 +220,20 @@ public class Compras extends AccesoAleatorio {
         }
     }
 
+    /**
+     * Actualiza el encabezado de una compra existente usando Stream API
+     * para encontrar el registro y reemplaza sus detalles.
+     */
     public void actualizar(Compra c) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Compra leida = leeEncabezado();
-                    if (leida.getIdCompra() == c.getIdCompra()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeEncabezado(c);
-                        break;
-                    }
+                long indice = indiceConStream(this::leeEncabezado, x -> x.getIdCompra() == c.getIdCompra());
+                if (indice == -1) {
+                    throw new PersistenciaException("Compra no encontrada para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Compra no encontrada para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeEncabezado(c);
             } finally {
                 archivo.close();
             }
@@ -243,72 +248,82 @@ public class Compras extends AccesoAleatorio {
         }
     }
 
+    /**
+     * Inactiva una compra reutilizando {@link Compra#anular()}.
+     */
     public void inactivar(int idCompra) throws PersistenciaException {
         Compra c = buscar(idCompra);
         c.anular();
         actualizar(c);
     }
 
+    /**
+     * Retorna solo las compras con estado PENDIENTE, con sus detalles adjuntos.
+     */
     public ArrayList<Compra> listarPendientes() throws PersistenciaException {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : obtenerTodos())
-            if (c.getEstado() == Compra.Estado.PENDIENTE) resultado.add(c);
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(c -> c.getEstado() == Compra.Estado.PENDIENTE)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    /**
+     * Retorna solo las compras con estado RECIBIDA, con sus detalles adjuntos.
+     */
     public ArrayList<Compra> listarRecibidas() throws PersistenciaException {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : obtenerTodos())
-            if (c.getEstado() == Compra.Estado.RECIBIDA) resultado.add(c);
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(c -> c.getEstado() == Compra.Estado.RECIBIDA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    /**
+     * Retorna solo las compras activas (no ANULADAS), con sus detalles adjuntos.
+     */
     public ArrayList<Compra> listarActivas() throws PersistenciaException {
-        ArrayList<Compra> resultado = new ArrayList<>();
-        for (Compra c : obtenerTodos())
-            if (c.getEstado() != Compra.Estado.ANULADA) resultado.add(c);
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(c -> c.getEstado() != Compra.Estado.ANULADA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
+    /**
+     * Devuelve todas las compras registradas, cada una con sus detalles adjuntos.
+     * Usa Stream API para leer todos los encabezados y luego agrupa los detalles
+     * en una sola pasada para evitar N+1 queries.
+     */
     public ArrayList<Compra> obtenerTodos() throws PersistenciaException {
-        ArrayList<Compra> lista = new ArrayList<>();
+        ArrayList<Compra> lista;
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeEncabezado());
-                }
-            } catch (EOFException eof) {
-                // fin del archivo
+                lista = leerTodosConStream(this::leeEncabezado);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener las compras.");
         }
 
+        // Adjuntamos los detalles fuera del bloque anterior para no anidar
+        // dos RandomAccessFile abiertos al mismo tiempo (este y el de
+        // DetallesCompra, que abre su propio archivo internamente).
+        //
         // En vez de llamar a conDetalles(c) por cada compra -- lo que reabria
         // y releia el archivo de detalles completo una vez por compra -- se
         // lee ese archivo UNA SOLA VEZ y se agrupa por idCompra en memoria.
-        java.util.Map<Integer, ArrayList<edu.uce.programacion2.tienda.negocio.DetalleCompra>> detallesPorCompra =
+        java.util.Map<Integer, ArrayList<DetalleCompra>> detallesPorCompra =
                 (detallesCompraDAO != null)
                         ? detallesCompraDAO.obtenerAgrupadoPorCompra()
                         : new java.util.HashMap<>();
 
-        ArrayList<Compra> conTodosLosDetalles = new ArrayList<>();
-        for (Compra c : lista) {
-            ArrayList<edu.uce.programacion2.tienda.negocio.DetalleCompra> detalles =
-                    detallesPorCompra.get(c.getIdCompra());
-            if (detalles != null) {
-                for (edu.uce.programacion2.tienda.negocio.DetalleCompra d : detalles) {
-                    c.agregarDetalle(d);
-                }
-            }
-            conTodosLosDetalles.add(c);
-        }
-        return conTodosLosDetalles;
+        return lista.stream()
+                .peek(c -> {
+                    ArrayList<DetalleCompra> detalles = detallesPorCompra.get(c.getIdCompra());
+                    if (detalles != null) {
+                        detalles.forEach(c::agregarDetalle);
+                    }
+                })
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public int conteo() {

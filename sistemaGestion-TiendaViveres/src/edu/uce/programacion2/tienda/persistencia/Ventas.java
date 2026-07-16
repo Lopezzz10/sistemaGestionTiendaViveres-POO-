@@ -3,11 +3,11 @@ package edu.uce.programacion2.tienda.persistencia;
 import edu.uce.programacion2.tienda.negocio.DetalleVenta;
 import edu.uce.programacion2.tienda.negocio.Venta;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
-import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de las ventas en archivo binario de
@@ -99,9 +99,6 @@ public class Ventas extends AccesoAleatorio {
         if (v == null) {
             throw new PersistenciaException("Venta invalida.");
         }
-        // Ver comentario equivalente en Usuarios.agregar(): siguienteId() debe
-        // calcularse antes de abrir el archivo para escritura, porque abre y
-        // cierra su propia RandomAccessFile sobre el campo "archivo" heredado.
         int nuevoId = siguienteId();
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
@@ -127,49 +124,48 @@ public class Ventas extends AccesoAleatorio {
     // (ej. detalles leidos previamente del archivo) se conservan tal cual.
     private ArrayList<DetalleVenta> asignarIds(ArrayList<DetalleVenta> detalles)
             throws PersistenciaException {
-        ArrayList<DetalleVenta> resultado = new ArrayList<>();
-        int siguienteId = detallesVentaDAO.siguienteIdDetalle();
-        for (DetalleVenta d : detalles) {
-            if (d.getIdDetalle() > 0) {
-                resultado.add(d);
-            } else {
-                resultado.add(new DetalleVenta(siguienteId++, d.getProducto(), d.getCantidad(), d.getDescuento()));
-            }
-        }
-        return resultado;
+        int[] siguienteId = { detallesVentaDAO.siguienteIdDetalle() };
+        return detalles.stream()
+                .map(d -> d.getIdDetalle() > 0
+                        ? d
+                        : new DetalleVenta(siguienteId[0]++, d.getProducto(), d.getCantidad(), d.getDescuento()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /** Calcula el siguiente id auto-incremental (maximo id existente + 1), solo sobre encabezados. */
+    /**
+     * Calcula el siguiente id auto-incremental (maximo id existente + 1),
+     * usando Stream API para leer todos los encabezados.
+     */
     public int siguienteId() throws PersistenciaException {
-        ArrayList<Venta> encabezados = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) encabezados.add(leeEncabezado());
-            } catch (EOFException eof) {
-                // fin del archivo
+                return leerTodosConStream(this::leeEncabezado).stream()
+                        .mapToInt(Venta::getIdVenta)
+                        .max()
+                        .orElse(0) + 1;
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            // archivo aun no existe: no hay encabezados
+            return 1;
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al calcular el siguiente id de venta.");
         }
-        return GeneradorId.siguienteId(encabezados, Venta::getIdVenta);
     }
 
-    // Busca una venta por su id, con sus detalles ya adjuntos.
+    /**
+     * Busca una venta por su id usando Stream API, con sus detalles ya adjuntos.
+     */
     public Venta buscar(int idVenta) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Venta v = leeEncabezado();
-                    if (v.getIdVenta() == idVenta) return conDetalles(v);
+                Venta v = buscarConStream(this::leeEncabezado, x -> x.getIdVenta() == idVenta);
+                if (v == null) {
+                    throw new PersistenciaException("Venta no encontrada: id=" + idVenta);
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Venta no encontrada: id=" + idVenta);
+                return conDetalles(v);
             } finally {
                 archivo.close();
             }
@@ -180,21 +176,20 @@ public class Ventas extends AccesoAleatorio {
         }
     }
 
-    // Actualiza el encabezado de una venta existente y reemplaza sus detalles.
+    /**
+     * Actualiza el encabezado de una venta existente usando Stream API
+     * para encontrar el registro y reemplaza sus detalles.
+     */
     public void actualizar(Venta v) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Venta leida = leeEncabezado();
-                    if (leida.getIdVenta() == v.getIdVenta()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeEncabezado(v);
-                        break;
-                    }
+                long indice = indiceConStream(this::leeEncabezado, x -> x.getIdVenta() == v.getIdVenta());
+                if (indice == -1) {
+                    throw new PersistenciaException("Venta no encontrada para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Venta no encontrada para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeEncabezado(v);
             } finally {
                 archivo.close();
             }
@@ -219,40 +214,40 @@ public class Ventas extends AccesoAleatorio {
         actualizar(v);
     }
 
-    /** Retorna solo las ventas con estado ACTIVA, con sus detalles adjuntos. */
+    /**
+     * Retorna solo las ventas con estado ACTIVA, con sus detalles adjuntos.
+     */
     public ArrayList<Venta> listarActivas() throws PersistenciaException {
-        ArrayList<Venta> resultado = new ArrayList<>();
-        for (Venta v : obtenerTodos()) {
-            if (v.getEstado() == Venta.Estado.ACTIVA) resultado.add(v);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(v -> v.getEstado() == Venta.Estado.ACTIVA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    /** Retorna solo las ventas con estado ANULADA, con sus detalles adjuntos. */
+    /**
+     * Retorna solo las ventas con estado ANULADA, con sus detalles adjuntos.
+     */
     public ArrayList<Venta> listarAnuladas() throws PersistenciaException {
-        ArrayList<Venta> resultado = new ArrayList<>();
-        for (Venta v : obtenerTodos()) {
-            if (v.getEstado() == Venta.Estado.ANULADA) resultado.add(v);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(v -> v.getEstado() == Venta.Estado.ANULADA)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    // Devuelve todas las ventas registradas, cada una con sus detalles adjuntos.
+    /**
+     * Devuelve todas las ventas registradas, cada una con sus detalles adjuntos.
+     * Usa Stream API para leer todos los encabezados y luego agrupa los detalles
+     * en una sola pasada para evitar N+1 queries.
+     */
     public ArrayList<Venta> obtenerTodos() throws PersistenciaException {
-        ArrayList<Venta> lista = new ArrayList<>();
+        ArrayList<Venta> lista;
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeEncabezado());
-                }
-            } catch (EOFException eof) {
-                // fin del archivo
+                lista = leerTodosConStream(this::leeEncabezado);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener las ventas.");
         }
@@ -264,23 +259,19 @@ public class Ventas extends AccesoAleatorio {
         // En vez de llamar a conDetalles(v) por cada venta -- lo que reabria
         // y releia el archivo de detalles completo una vez por venta -- se
         // lee ese archivo UNA SOLA VEZ y se agrupa por idVenta en memoria.
-        java.util.Map<Integer, ArrayList<edu.uce.programacion2.tienda.negocio.DetalleVenta>> detallesPorVenta =
+        java.util.Map<Integer, ArrayList<DetalleVenta>> detallesPorVenta =
                 (detallesVentaDAO != null)
                         ? detallesVentaDAO.obtenerAgrupadoPorVenta()
                         : new java.util.HashMap<>();
 
-        ArrayList<Venta> conTodosLosDetalles = new ArrayList<>();
-        for (Venta v : lista) {
-            ArrayList<edu.uce.programacion2.tienda.negocio.DetalleVenta> detalles =
-                    detallesPorVenta.get(v.getIdVenta());
-            if (detalles != null) {
-                for (edu.uce.programacion2.tienda.negocio.DetalleVenta d : detalles) {
-                    v.agregarDetalle(d);
-                }
-            }
-            conTodosLosDetalles.add(v);
-        }
-        return conTodosLosDetalles;
+        return lista.stream()
+                .peek(v -> {
+                    ArrayList<DetalleVenta> detalles = detallesPorVenta.get(v.getIdVenta());
+                    if (detalles != null) {
+                        detalles.forEach(v::agregarDetalle);
+                    }
+                })
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public int conteo() {

@@ -7,6 +7,7 @@ import edu.uce.programacion2.tienda.objetosServicio.GeneradorId;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de los inventarios en archivo binario
@@ -147,12 +148,9 @@ public class Inventarios extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Inventario inv = leeInventario();
-                    if (inv.getIdInventario() == idInventario) return inv;
-                }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Inventario no encontrado: id=" + idInventario);
+                Inventario inv = buscarConStream(this::leeInventario, x -> x.getIdInventario() == idInventario);
+                if (inv == null) throw new PersistenciaException("Inventario no encontrado: id=" + idInventario);
+                return inv;
             } finally {
                 archivo.close();
             }
@@ -168,15 +166,8 @@ public class Inventarios extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Inventario inv = leeInventario();
-                    if (inv.getProducto() != null &&
-                            inv.getProducto().getCodigo().equalsIgnoreCase(codigoProducto)) {
-                        return inv;
-                    }
-                }
-            } catch (EOFException eof) {
-                return null;
+                return buscarConStream(this::leeInventario, x -> x.getProducto() != null
+                        && x.getProducto().getCodigo().equalsIgnoreCase(codigoProducto));
             } finally {
                 archivo.close();
             }
@@ -192,16 +183,12 @@ public class Inventarios extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Inventario leido = leeInventario();
-                    if (leido.getIdInventario() == inv.getIdInventario()) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeInventario(inv);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeInventario, x -> x.getIdInventario() == inv.getIdInventario());
+                if (indice == -1) {
+                    throw new PersistenciaException("Inventario no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Inventario no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeInventario(inv);
             } finally {
                 archivo.close();
             }
@@ -224,38 +211,29 @@ public class Inventarios extends AccesoAleatorio {
 
     /** Retorna solo los inventarios activos (equivalente a WHERE activo = 1). */
     public ArrayList<Inventario> listarActivos() throws PersistenciaException {
-        ArrayList<Inventario> resultado = new ArrayList<>();
-        for (Inventario inv : obtenerTodos()) {
-            if (inv.isActivo()) resultado.add(inv);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Inventario::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     /** Retorna inventarios cuyo stock esta en o por debajo del umbral de alerta. */
     public ArrayList<Inventario> listarConAlerta() throws PersistenciaException {
-        ArrayList<Inventario> resultado = new ArrayList<>();
-        for (Inventario inv : obtenerTodos()) {
-            if (inv.requiereAlerta()) resultado.add(inv);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Inventario::requiereAlerta)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     // Devuelve todos los inventarios registrados (activos e inactivos).
     public ArrayList<Inventario> obtenerTodos() throws PersistenciaException {
-        ArrayList<Inventario> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeInventario());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeInventario);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los inventarios.");
         }

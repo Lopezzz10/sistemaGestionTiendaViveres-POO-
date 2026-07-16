@@ -4,6 +4,7 @@ import edu.uce.programacion2.tienda.negocio.Categoria;
 import edu.uce.programacion2.tienda.excepciones.PersistenciaException;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Clase que gestiona la persistencia de las categorias en archivo binario
@@ -73,16 +74,10 @@ public class Categorias extends AccesoAleatorio {
         }
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
-            try {
-                while (true) {
-                    Categoria leida = leeCategoria();
-                    if (leida.getCveCategoria().equalsIgnoreCase(c.getCveCategoria())) {
-                        throw new PersistenciaException(
-                                "Categoria ya existe: " + c.getCveCategoria());
-                    }
-                }
-            } catch (EOFException eof) {
-                // llegamos al final, no hay duplicado
+            Categoria existente = buscarConStream(this::leeCategoria,
+                    x -> x.getCveCategoria().equalsIgnoreCase(c.getCveCategoria()));
+            if (existente != null) {
+                throw new PersistenciaException("Categoria ya existe: " + c.getCveCategoria());
             }
             archivo.seek(archivo.length());
             escribeCategoria(c);
@@ -100,12 +95,7 @@ public class Categorias extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Categoria c = leeCategoria();
-                    if (c.getCveCategoria().equalsIgnoreCase(cveCategoria)) return c;
-                }
-            } catch (EOFException eof) {
-                return null;
+                return buscarConStream(this::leeCategoria, x -> x.getCveCategoria().equalsIgnoreCase(cveCategoria));
             } finally {
                 archivo.close();
             }
@@ -121,16 +111,12 @@ public class Categorias extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Categoria leida = leeCategoria();
-                    if (leida.getCveCategoria().equalsIgnoreCase(c.getCveCategoria())) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeCategoria(c);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeCategoria, x -> x.getCveCategoria().equalsIgnoreCase(c.getCveCategoria()));
+                if (indice == -1) {
+                    throw new PersistenciaException("Categoria no encontrada para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Categoria no encontrada para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeCategoria(c);
             } finally {
                 archivo.close();
             }
@@ -157,20 +143,15 @@ public class Categorias extends AccesoAleatorio {
 
     // Devuelve todas las categorias registradas (activas e inactivas).
     public ArrayList<Categoria> obtenerTodas() throws PersistenciaException {
-        ArrayList<Categoria> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeCategoria());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeCategoria);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener las categorias.");
         }
@@ -178,11 +159,9 @@ public class Categorias extends AccesoAleatorio {
 
     /** Retorna solo las categorias activas (equivalente a WHERE activo = 1). */
     public ArrayList<Categoria> listarActivas() throws PersistenciaException {
-        ArrayList<Categoria> resultado = new ArrayList<>();
-        for (Categoria c : obtenerTodas()) {
-            if (c.isActivo()) resultado.add(c);
-        }
-        return resultado;
+        return obtenerTodas().stream()
+                .filter(Categoria::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public int conteo() {

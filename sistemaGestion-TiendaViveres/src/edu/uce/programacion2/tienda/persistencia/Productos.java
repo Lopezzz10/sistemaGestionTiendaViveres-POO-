@@ -142,7 +142,10 @@ public class Productos extends AccesoAleatorio {
         escribeString(p.getEstado(), TAM_ESTADO);
     }
 
-    // Agrega un producto nuevo al final del archivo.
+    /**
+     * Agrega un producto nuevo al final del archivo usando Stream API
+     * para verificar duplicados.
+     */
     public void agregar(Producto p) throws PersistenciaException {
         if (p == null || p.getCodigo() == null || p.getCodigo().trim().isEmpty()) {
             throw new PersistenciaException("Producto invalido.");
@@ -150,37 +153,37 @@ public class Productos extends AccesoAleatorio {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Producto leido = leeProducto();
-                    if (leido.getCodigo().equalsIgnoreCase(p.getCodigo())) {
-                        throw new PersistenciaException("Producto ya existe: " + p.getCodigo());
-                    }
+                Producto existente = buscarConStream(this::leeProducto,
+                        x -> x.getCodigo().equalsIgnoreCase(p.getCodigo()));
+                if (existente != null) {
+                    throw new PersistenciaException("Producto ya existe: " + p.getCodigo());
                 }
-            } catch (EOFException eof) {
-                // llegamos al final, no hay duplicado
+                archivo.seek(archivo.length());
+                escribeProducto(p);
+            } finally {
+                archivo.close();
             }
-            archivo.seek(archivo.length());
-            escribeProducto(p);
         } catch (FileNotFoundException fnf) {
             throw new PersistenciaException("No se pudo abrir el archivo de productos.");
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al registrar el producto.");
-        } finally {
-            try { if (archivo != null) archivo.close(); } catch (IOException ioe) { }
         }
     }
 
-    // Busca un producto por su codigo. Lanza excepcion si no existe (igual que la version anterior).
+    /**
+     * Busca un producto por su codigo usando Stream API.
+     * Lanza excepcion si no existe.
+     */
     public Producto buscar(String codigo) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    Producto p = leeProducto();
-                    if (p.getCodigo().equalsIgnoreCase(codigo)) return p;
+                Producto p = buscarConStream(this::leeProducto,
+                        x -> x.getCodigo().equalsIgnoreCase(codigo));
+                if (p == null) {
+                    throw new PersistenciaException("Producto no encontrado: " + codigo);
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Producto no encontrado: " + codigo);
+                return p;
             } finally {
                 archivo.close();
             }
@@ -191,21 +194,21 @@ public class Productos extends AccesoAleatorio {
         }
     }
 
-    // Actualiza un producto existente buscandolo por codigo.
+    /**
+     * Actualiza un producto existente usando Stream API
+     * para encontrar el registro.
+     */
     public void actualizar(Producto p) throws PersistenciaException {
         try {
             archivo = new RandomAccessFile(nomArchivo, "rw");
             try {
-                while (true) {
-                    Producto leido = leeProducto();
-                    if (leido.getCodigo().equalsIgnoreCase(p.getCodigo())) {
-                        archivo.seek(archivo.getFilePointer() - tamRegistro);
-                        escribeProducto(p);
-                        return;
-                    }
+                long indice = indiceConStream(this::leeProducto,
+                        x -> x.getCodigo().equalsIgnoreCase(p.getCodigo()));
+                if (indice == -1) {
+                    throw new PersistenciaException("Producto no encontrado para actualizar.");
                 }
-            } catch (EOFException eof) {
-                throw new PersistenciaException("Producto no encontrado para actualizar.");
+                archivo.seek(indice * tamRegistro);
+                escribeProducto(p);
             } finally {
                 archivo.close();
             }
@@ -226,31 +229,29 @@ public class Productos extends AccesoAleatorio {
         actualizar(p);
     }
 
-    /** Retorna solo los productos activos (equivalente a WHERE activo = 1). */
+    /**
+     * Retorna solo los productos activos usando Stream API.
+     */
     public ArrayList<Producto> listarActivos() throws PersistenciaException {
-        ArrayList<Producto> resultado = new ArrayList<>();
-        for (Producto p : obtenerTodos()) {
-            if (p.isActivo()) resultado.add(p);
-        }
-        return resultado;
+        return obtenerTodos().stream()
+                .filter(Producto::isActivo)
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
-    // Devuelve todos los productos registrados (activos e inactivos).
+    /**
+     * Devuelve todos los productos registrados (activos e inactivos)
+     * usando Stream API.
+     */
     public ArrayList<Producto> obtenerTodos() throws PersistenciaException {
-        ArrayList<Producto> lista = new ArrayList<>();
         try {
             archivo = new RandomAccessFile(nomArchivo, "r");
             try {
-                while (true) {
-                    lista.add(leeProducto());
-                }
-            } catch (EOFException eof) {
-                return lista;
+                return leerTodosConStream(this::leeProducto);
             } finally {
                 archivo.close();
             }
         } catch (FileNotFoundException fnf) {
-            return lista;
+            return new ArrayList<>();
         } catch (IOException ioe) {
             throw new PersistenciaException("Error al obtener los productos.");
         }
