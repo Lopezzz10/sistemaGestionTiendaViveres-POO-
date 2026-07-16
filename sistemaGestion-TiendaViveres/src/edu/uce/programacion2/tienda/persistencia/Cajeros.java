@@ -15,10 +15,6 @@ import java.util.ArrayList;
  * aplicada a Cajero. La caja asignada ya no se guarda como texto generico
  * ("campoEspecifico"), sino como un int real.
  *
- * El id lo asigna el coordinador {@link Usuarios} (ver
- * {@link #agregar(Cajero, int)}), para que nunca se repita entre
- * Administrador/Cajero/Cliente aunque ahora vivan en archivos separados.
- *
  * <pre>
  * estructura del registro (213 bytes):
  * idUsuario      int          4 bytes
@@ -97,7 +93,7 @@ public class Cajeros extends AccesoAleatorio {
 
     /**
      * Agrega un cajero nuevo con un id ya asignado por el coordinador
-     * {@link Usuarios} (que lo calcula sobre los tres archivos de
+     * (que lo calcula sobre los tres archivos de
      * usuarios a la vez, para que nunca se repita entre
      * Administrador/Cajero/Cliente).
      */
@@ -118,8 +114,6 @@ public class Cajeros extends AccesoAleatorio {
             try { if (archivo != null) archivo.close(); } catch (IOException ioe) { }
         }
     }
-
-    /** Calcula el mayor id existente en este archivo (0 si esta vacio). Uso interno de {@link Usuarios}. */
     public int maxId() throws PersistenciaException {
         return GeneradorId.siguienteId(obtenerTodos(), Cajero::getIdUsuario) - 1;
     }

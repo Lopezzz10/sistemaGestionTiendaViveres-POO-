@@ -8,10 +8,11 @@ import java.util.Date;
  * Clase unificada para todos los productos de la tienda.
  * Absorbe los campos y la lógica de ProductoPerecible y ProductoNoPerecible.
  *
- * El campo 'tipo' determina el comportamiento:
+ * El campo 'marca' es comun a todos los productos (Perecibles y No
+ * Perecibles). El campo 'tipo' determina el resto del comportamiento:
  *   - "Perecible"    → tiene fechaVencimiento y temperaturaAlmacenamiento.
  *                      Aplica 20% de descuento si vence en 3 días o menos.
- *   - "No Perecible" → tiene pesoKg y marca.
+ *   - "No Perecible" → tiene pesoKg.
  *                      Aplica 10% de descuento si pesoKg > 5.
  *
  * @author Jose Manuel Lopez Olives, Wilmer Alexis Guachamín Vargas
@@ -223,7 +224,8 @@ public class Producto {
                     ", categoria=" + (categoria != null ? categoria.getNombre() : "N/A") +
                     ", precioUnitario=" + precioUnitario +
                     ", precioFinal=" + calcularPrecioFinal() +
-                    ", vencimiento=" + fechaVencimiento +
+                    ", marca='" + marca +
+                    "', vencimiento=" + fechaVencimiento +
                     ", temp=" + temperaturaAlmacenamiento + "°C" +
                     ", estado='" + estado + "'}";
         } else {

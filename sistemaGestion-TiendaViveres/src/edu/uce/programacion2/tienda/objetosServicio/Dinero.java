@@ -1,5 +1,7 @@
 package edu.uce.programacion2.tienda.objetosServicio;
 
+import edu.uce.programacion2.tienda.persistencia.Iva;
+
 /**
  * Objeto de servicio que encapsula un valor monetario, centralizando
  * el redondeo a 2 decimales y el cálculo de IVA que hoy se repite
@@ -10,11 +12,23 @@ package edu.uce.programacion2.tienda.objetosServicio;
 public class Dinero {
 
     /**
+     * DAO usado para persistir el IVA vigente en iva.dat, de modo que el
+     * valor configurado sobreviva a un reinicio de la aplicación (antes
+     * de esto, IVA era solo un valor en memoria que volvía a 15% cada
+     * vez que se cerraba el programa).
+     */
+    private static final Iva ivaDAO = new Iva();
+
+    /**
      * Porcentaje de IVA vigente, expresado como fracción (0.15 = 15%).
      * Por defecto se inicializa en 15%, pero puede modificarse en tiempo
-     * de ejecución mediante setIva(double).
+     * de ejecución mediante setIva(double). El valor real y actualizado
+     * se carga desde iva.dat al arrancar la fachada (ver
+     * FachadaArchivos/FachadaTienda), que llama a setIva(...) con lo que
+     * haya persistido en disco (o el valor por defecto, si es la primera
+     * ejecución).
      */
-    private static double IVA = 0.15;
+    private static double IVA = Iva.IVA_POR_DEFECTO;
 
     /** Retorna el porcentaje de IVA actual (como fracción, ej. 0.15). */
     public static double getIva() {
@@ -22,7 +36,9 @@ public class Dinero {
     }
 
     /**
-     * Establece el nuevo porcentaje de IVA.
+     * Establece el nuevo porcentaje de IVA y lo persiste inmediatamente
+     * en iva.dat, para que el cambio sobreviva a un reinicio de la
+     * aplicación.
      * @param nuevoIva valor como fracción (ej. 0.12 para 12%). Debe estar
      *                  entre 0 y 1.
      */
@@ -32,6 +48,15 @@ public class Dinero {
                     "El IVA debe estar entre 0 y 1 (ej. 0.15 para 15%). Valor recibido: " + nuevoIva);
         }
         IVA = nuevoIva;
+        try {
+            ivaDAO.guardarIva(IVA);
+        } catch (java.io.IOException ioe) {
+            // No queremos que un error de E/S al persistir el IVA rompa
+            // la operacion en curso (ej. emitir una factura): el valor
+            // ya quedo actualizado en memoria para esta sesion, solo
+            // avisamos que no se pudo guardar en disco.
+            System.err.println("Advertencia: no se pudo guardar el IVA en iva.dat: " + ioe.getMessage());
+        }
     }
 
     private double valor;

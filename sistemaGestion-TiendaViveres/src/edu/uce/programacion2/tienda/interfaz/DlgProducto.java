@@ -29,6 +29,7 @@ public class DlgProducto extends JDialog implements ActionListener {
     // Campos comunes
     private JTextField           txtCodigo;
     private JTextField           txtNombre;
+    private JTextField           txtMarca;
     private JComboBox<Categoria> cmbCategoria;
     private JTextField           txtPrecio;
     private JComboBox<String>    cmbTipo;
@@ -40,7 +41,6 @@ public class DlgProducto extends JDialog implements ActionListener {
 
     // Campos de No Perecible
     private JTextField           txtPeso;
-    private JTextField           txtMarca;
     private JPanel               pnlNoPerecible;
 
     // Botones
@@ -122,6 +122,11 @@ public class DlgProducto extends JDialog implements ActionListener {
         txtNombre.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         fila(pnl, "Nombre *", txtNombre, lc, fc, row++);
 
+        // Marca (campo comun a todos los tipos de producto)
+        txtMarca = new JTextField(25);
+        txtMarca.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        fila(pnl, "Marca *", txtMarca, lc, fc, row++);
+
         // Categoría
         cmbCategoria = new JComboBox<>();
         cmbCategoria.setFont(new Font("Segoe UI", Font.PLAIN, 13));
@@ -190,15 +195,11 @@ public class DlgProducto extends JDialog implements ActionListener {
         txtPeso.setHorizontalAlignment(JTextField.RIGHT);
         fila(pnlNoPerecible, "Peso (kg) *", txtPeso, lc3, fc3, 0);
 
-        txtMarca = new JTextField(20);
-        txtMarca.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        fila(pnlNoPerecible, "Marca *", txtMarca, lc3, fc3, 1);
-
         JLabel notaDesc = new JLabel("Descuento 10% automatico si peso > 5 kg");
         notaDesc.setFont(new Font("Segoe UI", Font.ITALIC, 11));
         notaDesc.setForeground(new Color(70, 130, 180));
         GridBagConstraints nc = (GridBagConstraints) fc3.clone();
-        nc.gridx = 0; nc.gridwidth = 2; nc.gridy = 2;
+        nc.gridx = 0; nc.gridwidth = 2; nc.gridy = 1;
         pnlNoPerecible.add(notaDesc, nc);
 
         // Agregar paneles al formulario principal
@@ -290,6 +291,7 @@ public class DlgProducto extends JDialog implements ActionListener {
     private void poblarFormulario(Producto p) {
         txtCodigo.setText(p.getCodigo());
         txtNombre.setText(p.getNombre());
+        txtMarca.setText(p.getMarca());
         txtPrecio.setText(String.format("%.2f", p.getPrecioUnitario()));
         cmbTipo.setSelectedItem(p.getTipo());
 
@@ -309,7 +311,6 @@ public class DlgProducto extends JDialog implements ActionListener {
                 txtFechaVencimiento.setText(SDF.format(p.getFechaVencimiento()));
         } else {
             txtPeso.setText(String.format("%.2f", p.getPesoKg()));
-            txtMarca.setText(p.getMarca());
         }
 
         actualizarPanelesTipo();
@@ -431,6 +432,14 @@ public class DlgProducto extends JDialog implements ActionListener {
             return null;
         }
 
+        String marca = txtMarca.getText().trim();
+        if (marca.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "La marca es obligatoria.",
+                    "Validacion", JOptionPane.WARNING_MESSAGE);
+            txtMarca.requestFocus();
+            return null;
+        }
+
         Categoria cat = (Categoria) cmbCategoria.getSelectedItem();
         Producto p;
 
@@ -470,6 +479,7 @@ public class DlgProducto extends JDialog implements ActionListener {
             }
 
             p = new Producto(codigo, nombre, cat, precio, fecha, temp);
+            p.setMarca(marca);
 
         } else {
             double peso;
@@ -485,14 +495,6 @@ public class DlgProducto extends JDialog implements ActionListener {
                 JOptionPane.showMessageDialog(this, "El peso debe ser un numero valido.",
                         "Validacion", JOptionPane.WARNING_MESSAGE);
                 txtPeso.requestFocus();
-                return null;
-            }
-
-            String marca = txtMarca.getText().trim();
-            if (marca.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "La marca es obligatoria.",
-                        "Validacion", JOptionPane.WARNING_MESSAGE);
-                txtMarca.requestFocus();
                 return null;
             }
 

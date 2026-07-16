@@ -4,6 +4,7 @@ import edu.uce.programacion2.tienda.excepciones.*;
 import edu.uce.programacion2.tienda.interfaces.IFachadaTienda;
 import edu.uce.programacion2.tienda.interfaces.ReglaDescuento;
 import edu.uce.programacion2.tienda.negocio.*;
+import edu.uce.programacion2.tienda.objetosServicio.Dinero;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosCompra;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosFactura;
 import edu.uce.programacion2.tienda.objetosServicio.CriteriosInventario;
@@ -72,6 +73,12 @@ public class FachadaTienda implements IFachadaTienda {
         this.cajeros          = new Cajeros();
         this.clientes         = new Clientes();
         this.roles        = new Roles();
+
+        // Carga el IVA persistido en iva.dat (o el valor por defecto si es
+        // la primera ejecución y el archivo todavía no existe), igual que
+        // FachadaArchivos, para que esta fachada de contingencia también
+        // respete el IVA configurado en ejecuciones anteriores.
+        Dinero.setIva(new Iva().leerIva());
     }
 
     public static String getNombreTienda() { return NOMBRE_TIENDA; }
@@ -733,6 +740,18 @@ public class FachadaTienda implements IFachadaTienda {
     @Override
     public void inactivarRol(int idRol) throws FachadaException {
         conCheckedVoid(() -> roles.inactivar(idRol));
+    }
+
+    // ── Configuración del sistema (IVA) ─────────────────────────────────────
+
+    @Override
+    public double getIvaVigente() {
+        return Dinero.getIva();
+    }
+
+    @Override
+    public void configurarIva(double nuevoIva) {
+        Dinero.setIva(nuevoIva);
     }
 
     @Override

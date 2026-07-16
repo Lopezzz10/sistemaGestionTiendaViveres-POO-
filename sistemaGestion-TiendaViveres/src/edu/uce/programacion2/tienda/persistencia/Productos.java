@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
  * fechaVencimiento           long         8 bytes  (millis desde 1970; 0 = no aplica)
  * temperaturaAlmacenamiento  double       8 bytes  (0.0 si no aplica)
  * pesoKg                     double       8 bytes  (0.0 si no aplica)
- * marca                      30 chars    60 bytes  (vacio si no aplica)
+ * marca                      30 chars    60 bytes  (aplica a todos los productos)
  * estado                     15 chars    30 bytes  ("Disponible", "Inactivo", etc.)
  * total:                                294 bytes
  * </pre>
@@ -103,6 +103,7 @@ public class Productos extends AccesoAleatorio {
         if (tipo == TIPO_PERECIBLE) {
             Date fecha = (fechaMillis > 0) ? new Date(fechaMillis) : null;
             p = new Producto(codigo, nombre, categoria, precio, fecha, temperatura);
+            p.setMarca(marca);
         } else {
             p = new Producto(codigo, nombre, categoria, precio, pesoKg, marca);
         }

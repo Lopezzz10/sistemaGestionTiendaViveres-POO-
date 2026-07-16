@@ -172,4 +172,22 @@ public interface IFachadaTienda {
     void            inactivarRol(int idRol) throws FachadaException;
     ArrayList<Rol>  listarRoles();
     ArrayList<Rol>  listarRolesActivos();
+
+    // ── Configuración del sistema (IVA) ─────────────────────────────────────
+
+    /**
+     * Retorna el porcentaje de IVA vigente (como fracción, ej. 0.15 = 15%).
+     * Así la capa de interfaz (VentanaPrincipal) no accede directamente a
+     * {@link edu.uce.programacion2.tienda.objetosServicio.Dinero}, sino a
+     * través de la fachada, igual que el resto de las operaciones.
+     */
+    double getIvaVigente();
+
+    /**
+     * Configura un nuevo porcentaje de IVA (como fracción, ej. 0.12 para
+     * 12%). El nuevo valor queda persistido en disco y sigue vigente aunque
+     * se reinicie la aplicación.
+     * @throws IllegalArgumentException si nuevoIva no está entre 0 y 1.
+     */
+    void configurarIva(double nuevoIva);
 }

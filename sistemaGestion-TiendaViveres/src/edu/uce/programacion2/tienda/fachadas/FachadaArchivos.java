@@ -94,6 +94,12 @@ public class FachadaArchivos implements IFachadaTienda {
         comprasDAO         = new Compras("compras.dat", detallesCompraDAO, proveedoresDAO, clientesDAO);
         detallesFacturaDAO = new DetallesFactura("detallesFactura.dat", productosDAO);
         facturasDAO        = new Facturas("facturas.dat", detallesFacturaDAO, ventasDAO, clientesDAO, cajerosDAO);
+
+        // Carga el IVA persistido en iva.dat (o el valor por defecto si es
+        // la primera ejecución y el archivo todavía no existe). Dinero.setIva
+        // se encarga de crear/actualizar iva.dat con lo que se lea aquí, así
+        // que esto también deja el archivo creado en el primer arranque.
+        Dinero.setIva(new Iva().leerIva());
     }
 
     public static String getNombreTienda() { return NOMBRE_TIENDA; }
@@ -821,6 +827,18 @@ public class FachadaArchivos implements IFachadaTienda {
     @Override
     public void inactivarRol(int idRol) throws FachadaException {
         conCheckedVoid(() -> rolesDAO.inactivar(idRol));
+    }
+
+    // ── Configuración del sistema (IVA) ─────────────────────────────────────
+
+    @Override
+    public double getIvaVigente() {
+        return Dinero.getIva();
+    }
+
+    @Override
+    public void configurarIva(double nuevoIva) {
+        Dinero.setIva(nuevoIva);
     }
 
     @Override

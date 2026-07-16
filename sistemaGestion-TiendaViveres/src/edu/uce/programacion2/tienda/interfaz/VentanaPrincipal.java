@@ -1231,7 +1231,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     }
 
     private void actualizarLabelIva() {
-        double porcentaje = edu.uce.programacion2.tienda.objetosServicio.Dinero.getIva() * 100;
+        double porcentaje = control.getFachada().getIvaVigente() * 100;
         lblIvaActual.setText("IVA vigente: " + formatearPorcentaje(porcentaje) + "%");
     }
 
@@ -1250,7 +1250,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
     }
 
     private void configurarIva() {
-        double actual = edu.uce.programacion2.tienda.objetosServicio.Dinero.getIva() * 100;
+        double actual = control.getFachada().getIvaVigente() * 100;
         String entrada = JOptionPane.showInputDialog(
                 this,
                 "Ingrese el nuevo porcentaje de IVA (ejemplo: 15 para 15%):",
@@ -1261,7 +1261,7 @@ public class VentanaPrincipal extends JFrame implements ActionListener {
 
         try {
             double nuevoPorcentaje = Double.parseDouble(entrada.trim());
-            edu.uce.programacion2.tienda.objetosServicio.Dinero.setIva(nuevoPorcentaje / 100.0);
+            control.getFachada().configurarIva(nuevoPorcentaje / 100.0);
             actualizarLabelIva();
             JOptionPane.showMessageDialog(this,
                     "IVA actualizado correctamente a " + nuevoPorcentaje + "%.",
